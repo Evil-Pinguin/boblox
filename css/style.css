@@ -697,3 +697,10 @@ html[data-theme="light"] .ra-mock { --text:#f2f5ff; --muted:#9fb0d8; --ink:#fff;
 .l-code.xlong { font-size: 17px; line-height: 1.35; padding: 8px 16px; }
 .l-main.dense .l-code.xlong { font-size: 17px; }
 .l-main.dense .l-code.long { font-size: 19px; }
+
+/* кнопки «День 1» / «День 2» на обложке */
+button.day-card { border-top: 0; border-left: 0; border-right: 0; color: #fff; font-family: inherit; text-align: left; cursor: pointer; transition: transform .15s, box-shadow .15s, filter .15s; }
+button.day-card:hover:not(:disabled) { transform: translateY(-3px); filter: brightness(1.12); box-shadow: 0 8px 22px rgba(0,0,0,.4); }
+button.day-card:disabled { cursor: default; }
+button.day-card.d2:not(.soon) { animation: glowp 1.8s infinite; }
+@keyframes glowp { 50% { box-shadow: 0 0 0 7px rgba(176,92,255,.25), 0 0 24px rgba(176,92,255,.7); } }

@@ -99,6 +99,9 @@
     const slide = el('section', `slide ${s.cover ? 'is-cover' : ''} ${dir > 0 ? 'in-right' : 'in-left'}`, s.body);
     area.appendChild(slide);
     if (document.documentElement.classList.contains('m')) window.scrollTo(0, 0);
+    slide.querySelectorAll('[data-goto]').forEach((b) => {
+      b.onclick = () => { const k = SLIDES.findIndex((x) => x.id === b.dataset.goto); if (k >= 0) go(k); };
+    });
     slide.prepend(el('div', 'slide-no', String(i + 1).padStart(2, '0')));
 
     renderPanel(s, slide);

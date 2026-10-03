@@ -53,8 +53,8 @@ const ALL_SLIDES = [
           <div class="cover-sub">СОЗДАЙ СВОЮ ИГРУ ЗА 2 ДНЯ</div>
           <div class="pill mono">Roblox Studio × Lua × AI</div>
           <div class="cover-days">
-            <div class="day-card d1"><b>День 1</b><span>СОЗДАЁМ</span></div>
-            <div class="day-card d2 ${DAYS_ENABLED >= 2 ? '' : 'soon'}"><b>День 2</b><span>ЗАПУСКАЕМ${DAYS_ENABLED >= 2 ? '' : ' · скоро'}</span></div>
+            <button type="button" class="day-card d1" data-goto="mission"><b>День 1</b><span>СОЗДАЁМ</span></button>
+            <button type="button" class="day-card d2 ${DAYS_ENABLED >= 2 ? '' : 'soon'}" ${DAYS_ENABLED >= 2 ? 'data-goto="day2" title="Перейти сразу в День 2"' : 'disabled'}><b>День 2</b><span>ЗАПУСКАЕМ${DAYS_ENABLED >= 2 ? ' →' : ' · скоро'}</span></button>
           </div>
         </div>
         <div class="cover-right">
