@@ -1,4 +1,4 @@
-/* Данные презентации: 25 слайдов (День 1 = слайды 1–16, День 2 = 17–25).
+/* Данные презентации: День 1 — 26 слайдов + итог, День 2 — 9 слайдов (включается флагом ниже).
    ВАЖНО: переключатель DAYS_ENABLED ниже. 1 = только День 1 (+ итоговый слайд), 2 = полная презентация.
    У каждого слайда: section, title, body (HTML), action (что сделать), reward (какую часть игры получишь).
 
@@ -16,7 +16,7 @@ const DAYS_ENABLED = 1;   // ← поставь 2, чтобы вернуть Д�
 
 /* Порядок слайдов (по id). Прогресс хранится по id, поэтому слайды можно вставлять и менять местами. */
 const DAY1_IDS = ['cover', 'mission', 'howto', 'plan', 'team', 'concept', 'title', 'genre', 'inspiration', 'aisafe', 'aicoauthor', 'prompt',
-  'world', 'map', 'style', 'studio', 'windows', 'parts', 'build', 'robloxai', 'scriptwhere', 'lua', 'ailua'];
+  'world', 'map', 'style', 'studio', 'windows', 'parts', 'build', 'robloxai', 'scriptwhere', 'lua', 'luaprops', 'luaif', 'ailua'];
 const DAY2_IDS = ['day2', 'cutscene', 'mechanic', 'feature', 'secret', 'final', 'devstand', 'test', 'finale'];
 const ORDER = DAYS_ENABLED >= 2 ? [...DAY1_IDS, ...DAY2_IDS] : [...DAY1_IDS, 'day1finale'];
 const TOTAL = ORDER.length;
@@ -352,7 +352,7 @@ const ALL_SLIDES = [
         </div>
       </div>`,
     action: {
-      text: 'Пройди урок Lua. Сначала смотри на пример — потом повтори по примеру. Это легко!',
+      text: 'Пройди урок 1: сначала смотри на пример — потом повтори по примеру. Это легко!',
       fields: [{ type: 'lesson', slot: 'lua1', key: 'lua1', lesson: 'basics' }],
     },
     reward: { icon: '⌨️', name: 'Первая строка кода' },
@@ -369,7 +369,7 @@ const ALL_SLIDES = [
       ${aiMini('Спрашивай у:')}
       <p class="lead">Потом в Studio: <b>получил → проверил → понял → изменил.</b></p>`,
     action: {
-      text: 'Пройди урок 2: смотри на пример и повтори. Потом в Studio отмечай шаги ниже.',
+      text: 'Пройди урок 4: смотри на пример и повтори. Потом в Studio отмечай шаги ниже.',
       fields: [
         { type: 'lesson', slot: 'lua2', key: 'lua2', lesson: 'pickup' },
         { type: 'checklist', key: 'luaSteps', inline: true, items: ['Получил', 'Проверил', 'Понял', 'Изменил'] },
@@ -724,6 +724,52 @@ const EXTRA_SLIDES = [
       fields: [{ type: 'quiz', key: 'quizScript', answer: 0, options: ['Внутрь самого предмета', 'В окно Output', 'В Toolbox'], hint: 'Скрипт живёт там, где лежит. Вспомни script.Parent — «мой предмет».' }],
     },
     reward: { icon: '📂', name: 'Script на месте' },
+  },
+
+  {
+    id: 'luaprops', section: 'studio', title: 'Меняем блок кодом',
+    body: `
+      <h2>🎨 Меняем блок кодом <small>ТРЕНАЖЁР LUA</small></h2>
+      <p class="lead"><b>У каждого блока есть свойства</b> — цвет, размер, прозрачность. Их видно в окне <b>Properties</b>. Код умеет их менять!</p>
+      <div class="split">
+        <div>
+          <pre class="demo-code mono">part.BrickColor = BrickColor.new("Bright red")</pre>
+          <div data-slot="lua3"></div>
+        </div>
+        <div>
+          <p class="lead">Что умеем менять:</p>
+          <ul class="ilist"><li>🎨 цвет — <b>BrickColor</b></li><li>👻 прозрачность — <b>Transparency</b></li><li>📐 размер — <b>Size</b></li><li>⚓ приклеить — <b>Anchored</b></li></ul>
+        </div>
+      </div>`,
+    action: {
+      text: 'Пройди урок 2: смотри на пример и повтори. В конце получишь скрипт для своего блока.',
+      fields: [{ type: 'lesson', slot: 'lua3', key: 'lua3', lesson: 'props' }],
+    },
+    reward: { icon: '🎨', name: 'Скрипт перекраски' },
+  },
+
+  {
+    id: 'luaif', section: 'studio', title: 'Если — то',
+    body: `
+      <h2>🤔 Если — то <small>ТРЕНАЖЁР LUA</small></h2>
+      <p class="lead"><b>Код умеет решать:</b> если что-то случилось — сделай вот это.</p>
+      <div class="split">
+        <div>
+          <pre class="demo-code mono">if coins >= 5 then
+  print("Открываем дверь!")
+end</pre>
+          <div data-slot="lua4"></div>
+        </div>
+        <div>
+          <p class="lead">Где это нужно в игре:</p>
+          <ul class="ilist"><li>🚪 5 монет — открыть дверь</li><li>🔥 коснулся лавы — проиграл</li><li>🏁 дошёл до финиша — победа</li></ul>
+        </div>
+      </div>`,
+    action: {
+      text: 'Пройди урок 3: «если — то», Touched и лава. В конце получишь готовую ловушку.',
+      fields: [{ type: 'lesson', slot: 'lua4', key: 'lua4', lesson: 'cond' }],
+    },
+    reward: { icon: '🔥', name: 'Скрипт-ловушка' },
   },
 ];
 

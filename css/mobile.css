@@ -138,6 +138,13 @@ html.m .gc-title { font-size: 28px; }
 html.m .devstand { padding: 12px 14px; }
 html.m .ds-row b { min-width: 96px; }
 
+html.m .split > * { min-width: 0; }
+html.m .demo-code { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 18px; }
+html.m .lesson-card { flex-wrap: wrap; gap: 8px 12px; padding: 12px; }
+html.m .lc-body { flex: 1 1 150px; }
+html.m .lc-body b { font-size: 19px; }
+html.m .lc-btn { flex: 1 1 100%; font-size: 18px; }
+
 /* ---------- нижняя панель действия ---------- */
 html.m .panel { grid-template-columns: 1fr; gap: 12px; min-height: 0; padding: 14px 14px 16px; align-items: stretch; }
 html.m .p-text { font-size: 17px; }

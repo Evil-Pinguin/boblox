@@ -15,7 +15,7 @@
 
   const stepNow = () => L.steps[idx];
   const norm = (s) => s.replace(/\s+/g, ' ').trim();
-  const sub = (code) => code.replace(/\{\{(\w+)\}\}/g, (_, k) => J.state.data[k] || 'Предмет собран!');
+  const sub = (code) => code.replace(/\{\{(\w+)\}\}/g, (_, k) => J.state.data[k] || (L.defaults && L.defaults[k]) || '…');
   const fullText = (s) => (s.wrap ? s.wrap[0] + typed.trim() + s.wrap[1] : typed.trim());
 
   /* ---------- открыть / закрыть ---------- */
@@ -68,6 +68,7 @@
       if (firstTry) { xp += 10; st.xp = xp; } else { xp += 5; st.xp = xp; }
       if (s.type === 'type' && s.save) J.state.data[s.save] = s.save === 'lua' ? fullText(s) : typed.trim();
       if (s.run) outText = J.runLua(fullText(s)).text;
+      else if (s.outFmt) outText = s.outFmt.replace('{}', typed.trim());
       else if (s.showOut) outText = typed.trim();
       else if (s.out) outText = s.out;
       J.burst(14);
@@ -125,6 +126,8 @@
     main.appendChild(el('div', 'l-tag', `🧪 ТРЕНАЖЁР LUA · шаг ${idx + 1} из ${total} · <span>это не Roblox Studio</span>`));
     main.appendChild(el('h2', 'l-title', s.title));
     if (s.text) main.appendChild(el('p', 'l-text', s.text));
+    const nl = (t) => (t ? t.split('\n').length : 0);
+    if ((s.type === 'choice' && nl(s.code) >= 3) || (s.type === 'order' && s.lines.length >= 4) || (s.example && nl(s.example.code) >= 6) || nl(s.code) >= 6) main.classList.add('dense');
     if (s.example) { main.classList.add('has-ex'); exampleBox(main, s.example); }
 
     if (s.type === 'learn') codeBlock(main, sub(s.code), s.copy);
@@ -286,9 +289,7 @@
     main.appendChild(el('div', 'l-trophy', '🏆'));
     main.appendChild(el('h2', 'l-title', 'Урок пройден!'));
     main.appendChild(el('p', 'l-text', `${L.title}<br>Твои очки: <b>⭐ ${xp}</b> из ${L.steps.filter((s) => s.type !== 'learn').length * 10}`));
-    main.appendChild(el('p', 'l-text small', id === 'basics'
-      ? 'Теперь ты знаешь print, переменные и if. Дальше — настоящий Roblox!'
-      : 'Скрипт готов. Скопируй его в Roblox Studio и проверь в Play!'));
+    main.appendChild(el('p', 'l-text small', L.summary || 'Скрипт готов. Скопируй его в Roblox Studio и проверь в Play!'));
     const btn = el('button', 'btn l-btn', 'Забрать блок 🎁'); btn.onclick = claim;
     foot.append(el('div', 'l-msg', '<b>🎉 Отличная работа!</b>'), btn);
   }

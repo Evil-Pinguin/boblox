@@ -262,7 +262,7 @@
         const label = p.done ? '↻ Пройти ещё раз' : step > 0 ? '▶ Продолжить урок' : '▶ Начать урок';
         box.classList.toggle('done', !!p.done);
         box.innerHTML = `<div class="lc-ico">${lesson.icon}</div>
-          <div class="lc-body"><b>${lesson.title}</b><span>${n} коротких шагов · как в Duolingo</span>
+          <div class="lc-body"><b>${lesson.title}</b><span>${lesson.steps.filter((x) => x.type !== 'learn').length} заданий · как в Duolingo</span>
             <div class="lc-bar"><i style="width:${Math.round(step / n * 100)}%"></i></div>
             <em>${p.done ? '✅ Урок пройден' : `Пройдено шагов: ${step} из ${n}`}</em></div>
           <button class="btn lc-btn" type="button">${label}</button>`;
