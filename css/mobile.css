@@ -1,0 +1,222 @@
+/* Мобильная версия: включается классом html.m (телефон / планшет вертикально, см. fit() в js/app.js).
+   На широком экране остаётся сцена 1280×720 с масштабом. */
+html.m [hidden] { display: none !important; }
+
+html.m, html.m body { height: auto; overflow-x: hidden; overflow-y: auto; -webkit-text-size-adjust: 100%; }
+html.m .viewport { position: static; overflow: visible; }
+html.m .stage {
+  position: relative; left: auto; top: auto; width: 100%; height: auto; min-height: 100vh; min-height: 100dvh;
+  transform: none !important; display: flex; flex-direction: column; overflow: visible;
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+
+/* ---------- верх ---------- */
+html.m .topbar { position: sticky; top: 0; z-index: 30; height: 46px; padding: 0 10px; gap: 8px; flex: none; backdrop-filter: blur(8px); }
+html.m .brand { font-size: 0; gap: 0; }
+html.m .brand-logo { font-size: 20px; }
+html.m .section-tag { font-size: 11px; padding: 4px 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; max-width: 52vw; }
+html.m .top-actions { gap: 6px; margin-left: auto; }
+html.m .counter { font-size: 12px; min-width: 0; white-space: nowrap; }
+html.m .reset-btn { height: 34px; padding: 0 9px; font-size: 12px; }
+html.m .icon-btn { width: 34px; height: 34px; font-size: 15px; }
+html.m #btnFull { display: none; }
+
+html.m .progress { position: sticky; top: 46px; z-index: 30; height: 42px; padding: 0 10px; gap: 8px; flex: none; backdrop-filter: blur(8px); }
+html.m .pg-text { width: auto; font-size: 0; letter-spacing: 0; }
+html.m .pg-text b { font-size: 19px; }
+html.m .bricks { padding: 2px; gap: 2px; border-width: 1px; border-radius: 8px; }
+html.m .brick { height: 22px; border-radius: 3px; border-bottom-width: 2px; font-size: 0; }
+html.m .pg-count { width: auto; min-width: 46px; font-size: 13px; }
+html.m .pg-count b { font-size: 19px; }
+
+/* ---------- слайд ---------- */
+html.m .slide-area { position: static; overflow: visible; flex: none; }
+html.m .slide {
+  position: relative; inset: auto; padding: 56px 14px 18px; font-size: 17px; line-height: 1.35;
+  justify-content: flex-start; gap: 12px;
+}
+html.m .slide-no { left: 12px; top: 10px; min-width: 44px; height: 34px; font-size: 20px; border-radius: 10px; }
+html.m .slide h2 { font-size: 27px; line-height: 1.15; }
+html.m .slide h2 small { font-size: 12px; }
+html.m .lead { font-size: 19px; }
+html.m .callout { font-size: 18px; padding: 8px 12px; }
+html.m .quote { font-size: 17px; padding: 10px 12px; }
+html.m .copy-btn { font-size: 13px; }
+html.m .warn { font-size: 20px; }
+html.m .formula { font-size: 16px; padding: 8px 10px; }
+html.m .bigquote { font-size: 30px; padding: 14px; }
+html.m .mission { font-size: 26px; }
+html.m .tile { font-size: 17px; padding: 10px 12px; }
+html.m .ti { font-size: 26px; }
+html.m .tiles, html.m .tiles.cols3, html.m .tiles.cols4 { grid-template-columns: 1fr; }
+html.m .tiles.big .tile { font-size: 17px; }
+html.m .plan, html.m .qa, html.m .nlist.two, html.m .vs, html.m .split, html.m .final-wrap, html.m .ilist.big,
+html.m .style-form, html.m .ra-grid, html.m .ai-cards { grid-template-columns: 1fr; }
+html.m .plan-item { font-size: 20px; padding: 12px; } html.m .plan-item b { font-size: 34px; }
+html.m .qa-item { font-size: 17px; } html.m .qa-item b { font-size: 19px; }
+html.m .nlist { font-size: 20px; }
+html.m .ilist, html.m .ilist.big { font-size: 18px; }
+html.m .chips-static span { font-size: 17px; padding: 6px 12px; }
+html.m .flow { font-size: 18px; } html.m .flow span { padding: 6px 12px; }
+html.m .flow.big { font-size: 20px; }
+html.m .flow.col { font-size: 17px; }
+html.m .route { flex-wrap: wrap; font-size: 18px; } html.m .route span { padding: 8px 14px; }
+html.m .style-form { font-size: 17px; gap: 8px; } html.m .style-form b { min-width: 96px; }
+html.m .vbox { font-size: 18px; min-width: 0; width: 100%; padding: 8px 16px; }
+html.m .vflow.h { flex-direction: column; gap: 4px; align-items: stretch; }
+html.m .vflow.h .vbox { font-size: 18px; padding: 10px 14px; }
+html.m .vflow.h .arrow { transform: rotate(90deg); font-size: 28px; align-self: center; }
+
+/* обложка */
+html.m .slide.is-cover { align-items: stretch; }
+html.m .cover-wrap { grid-template-columns: 1fr; gap: 16px; }
+html.m .cover-wrap .cover-logo { font-size: 50px; }
+html.m .cover-wrap .cover-sub { font-size: 18px; }
+html.m .cover-wrap .pill { font-size: 14px; }
+html.m .cover-wrap .cover-days { width: 100%; }
+html.m .cover-wrap .day-card { flex: 1; width: auto; font-size: 13px; padding: 8px; } html.m .cover-wrap .day-card b { font-size: 18px; }
+html.m .cover-right { gap: 12px; }
+html.m .license { transform: rotate(1deg); }
+html.m .cover-right .lic-name { font-size: 28px; }
+html.m .cover-form { padding: 10px 12px 12px; }
+html.m [data-slot="name"] input { height: 56px; font-size: 26px; }
+html.m [data-slot="name"] input::placeholder { font-size: 18px; }
+html.m .cf-label { font-size: 13px; flex-wrap: wrap; }
+
+/* план дня, схемы */
+html.m .vplan { width: 100%; }
+html.m .vp-item { grid-template-columns: 40px 1fr; gap: 0 8px; padding: 6px 12px 6px 6px; }
+html.m .vp-item b { font-size: 22px; grid-row: 1 / span 2; align-self: center; }
+html.m .vp-item span { font-size: 19px; white-space: normal; }
+html.m .vp-item em { font-size: 15px; grid-column: 2; }
+html.m .ra-grid .vp-item { grid-template-columns: 40px 1fr; }
+html.m .ra-grid .vp-item em { margin-top: 0; }
+html.m .hsteps { flex-direction: column; gap: 6px; }
+html.m .hs { width: 100%; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 10px 14px; text-align: left; flex-wrap: wrap; }
+html.m .hs-i { font-size: 34px; } html.m .hs b { font-size: 20px; } html.m .hs em { font-size: 16px; flex-basis: 100%; padding-left: 50px; margin-top: -14px; }
+html.m .hs-arrow { border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 16px solid var(--accent); border-bottom: 0; }
+html.m .mini-wrap { flex-wrap: wrap; font-size: 16px; gap: 10px; }
+html.m .mini-bricks i { width: 18px; height: 22px; }
+html.m .m-goal { font-size: 27px; margin: 6px 0 16px; }
+html.m .mpath { grid-template-columns: 1fr 1fr; row-gap: 22px; column-gap: 8px; }
+html.m .mnode { font-size: 17px; gap: 8px; }
+html.m .mc { width: 72px; height: 72px; font-size: 34px; }
+html.m .mnode:not(.last)::after, html.m .mnode:not(.last)::before { display: none; }
+html.m .mday.d1, html.m .mday.d2 { grid-column: 1 / -1; font-size: 13px; }
+html.m .m-now { font-size: 18px; margin-top: 8px; }
+
+/* студия */
+html.m .studio-mock { padding: 6px; }
+html.m .sm-bar { gap: 14px; font-size: 14px; flex-wrap: wrap; }
+html.m .sm-main { grid-template-columns: 1fr; height: auto; }
+html.m .sm-box { min-height: 62px; }
+html.m .sm-box strong { font-size: 18px; } html.m .sm-box small { font-size: 14px; }
+html.m .sm-box.vp { min-height: 120px; }
+html.m .ra-bar { gap: 10px; font-size: 14px; flex-wrap: wrap; }
+html.m .ra-chat { font-size: 16px; padding-top: 30px; }
+
+/* ИИ */
+html.m .ai-card { padding: 8px 12px 8px 8px; gap: 10px; }
+html.m .ai-t b { font-size: 22px; }
+html.m .ai-go { font-size: 14px; }
+html.m .ai-mini { flex-wrap: wrap; font-size: 16px; }
+html.m .demo-code { font-size: 20px; }
+
+/* карточки жанров */
+html.m .cards { grid-template-columns: 1fr 1fr; gap: 8px; }
+html.m .slide:has(.cards) h2 { font-size: 27px; }
+html.m .slide:has(.cards) .lead { font-size: 17px; }
+html.m .gcard { padding: 6px 8px 6px; }
+html.m .gc-img { height: 64px; margin: -3px -7px 5px; }
+html.m .gc-h { font-size: 18px; } html.m .gc-d { font-size: 14px; }
+html.m .gc-ex { white-space: normal; font-size: 12px; }
+html.m .genre-sel { font-size: 16px; }
+
+/* итог и Dev Stand */
+html.m .final-big { font-size: 22px; } html.m .final-big b { font-size: 34px; }
+html.m .gc-title { font-size: 28px; }
+html.m .devstand { padding: 12px 14px; }
+html.m .ds-row b { min-width: 96px; }
+
+/* ---------- нижняя панель действия ---------- */
+html.m .panel { grid-template-columns: 1fr; gap: 12px; min-height: 0; padding: 14px 14px 16px; align-items: stretch; }
+html.m .p-text { font-size: 17px; }
+html.m .p-fields:has(.f-select), html.m .p-fields:has(.f-select):has(.f-text) { grid-template-columns: 1fr; }
+html.m .p-fields.empty::after { font-size: 15px; padding: 10px; }
+html.m input[type=text], html.m textarea, html.m select { font-size: 18px; }
+html.m .p-reward { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px; }
+html.m .r-label { flex-basis: 100%; }
+html.m .r-item { flex: 1 1 150px; }
+html.m .p-reward .btn { flex: 1 1 150px; min-height: 50px; font-size: 17px; }
+html.m .chips { gap: 6px; } html.m .chip { font-size: 16px; padding: 7px 12px; }
+html.m .p-fields .checks.inline { grid-template-columns: 1fr; }
+html.m .code-in { font-size: 18px !important; }
+html.m .code-out { font-size: 15px; }
+
+/* стрелки навигации — плавающие внизу */
+html.m .nav-btn { position: fixed; top: auto; bottom: calc(14px + env(safe-area-inset-bottom)); width: 54px; height: 54px; border-radius: 50%; font-size: 32px; z-index: 25;
+  background: rgba(24,34,70,.92); border: 2px solid var(--line); box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+html.m .nav-btn.prev { left: 12px; } html.m .nav-btn.next { right: 12px; }
+html.m .nav-btn.next.ready { background: var(--green); border-color: var(--green); }
+html[data-theme="light"].m .nav-btn { background: rgba(255,255,255,.95); }
+html[data-theme="light"].m .nav-btn.next.ready { background: var(--green); }
+
+/* ---------- всплывающие окна ---------- */
+html.m .toast { position: fixed; top: 100px; width: calc(100% - 24px); max-width: 420px; z-index: 80; }
+html.m .t-card { gap: 12px; padding: 12px 16px 12px 12px; }
+html.m .t-brick { width: 54px; height: 54px; font-size: 32px; }
+html.m .t-body span { font-size: 21px; } html.m .t-body small { font-size: 13px; }
+html.m .confetti { position: fixed; z-index: 90; }
+
+html.m .modal, html.m .final, html.m .lesson { position: fixed; inset: 0; }
+html.m .modal { overflow-y: auto; align-items: start; padding: 12px; }
+html.m .modal-box { width: 100%; max-height: none; padding: 14px; }
+html.m .modal-head h3 { font-size: 20px; }
+html.m .build-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+html.m .bcell { min-height: 54px; padding: 6px 8px; } html.m .bcell .bi { font-size: 22px; } html.m .bcell .bt { font-size: 13px; }
+html.m .modal.confirm { align-items: center; }
+html.m .confirm-box { width: 100%; max-width: 420px; padding: 20px; }
+html.m .cf-btns { flex-direction: column; width: 100%; } html.m .cf-btns .btn { width: 100%; }
+
+html.m .final { overflow-y: auto; display: block; padding: 16px 14px 28px; }
+html.m .final-box { width: 100%; gap: 10px; }
+html.m .fn-head { font-size: 15px; letter-spacing: .16em; }
+html.m .fn-title { font-size: 40px !important; text-shadow: 0 3px 0 #000; }
+html.m .fn-rank { font-size: 16px; padding: 6px 18px; }
+html.m .fn-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+html.m .fn-grid div { min-height: 64px; padding: 8px 10px; } html.m .fn-grid span { font-size: 16px; } html.m .fn-grid i { font-size: 11px; }
+html.m .fn-by { font-size: 19px; }
+html.m .fn-quote { font-size: 22px; padding: 8px 16px; }
+html.m .fn-foot { flex-direction: column; gap: 10px; font-size: 14px; }
+
+/* ---------- урок Lua ---------- */
+html.m .lesson { display: flex; flex-direction: column; overflow-y: auto; }
+html.m .l-head { padding: 0 14px; gap: 10px; min-height: 52px; flex: none; position: sticky; top: 0; z-index: 2; background: var(--lesson-bg); }
+html.m .l-xp { font-size: 16px; min-width: 56px; }
+html.m .l-main { width: 100%; padding: 8px 14px 16px; justify-content: flex-start; gap: 10px; flex: 1 0 auto; }
+html.m .l-title, html.m .l-main.has-ex .l-title { font-size: 25px; }
+html.m .l-text, html.m .l-main.has-ex .l-text { font-size: 17px; }
+html.m .l-text.small { font-size: 15px; }
+html.m .l-code, html.m .l-main.has-ex .l-code { font-size: 17px; padding: 10px 12px; overflow-x: auto; }
+html.m .l-code.long { font-size: 15px; }
+html.m .l-code.ex, html.m .l-main.has-ex .l-code.ex { font-size: 15px; }
+html.m .l-code.inline, html.m .l-code.inline .l-input { font-size: 17px; }
+html.m .l-out { font-size: 16px; padding: 8px 12px; }
+html.m .l-trophy { font-size: 80px; }
+html.m .l-opt { font-size: 17px; padding: 11px 12px; gap: 10px; }
+html.m .word { font-size: 17px; padding: 8px 14px; }
+html.m .l-bank { gap: 8px; }
+html.m .l-bank.order .word { font-size: 15px; padding: 7px 12px; }
+html.m .ol { font-size: 15px; min-height: 38px; padding: 6px 10px; }
+html.m .l-input { font-size: 19px; padding: 10px 12px; }
+html.m .l-foot { position: sticky; bottom: 0; flex: none; flex-wrap: wrap; gap: 8px 12px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); min-height: 74px; backdrop-filter: blur(8px); }
+html.m .l-msg { font-size: 15px; flex: 1 1 100%; } html.m .l-msg b { font-size: 19px; }
+html.m .l-btn { min-width: 0; width: 100%; margin-left: 0; font-size: 18px; padding: 13px 16px; }
+
+/* маленькие телефоны */
+@media (max-width: 360px) {
+  html.m .slide { font-size: 16px; }
+  html.m .cover-wrap .cover-logo { font-size: 42px; }
+  html.m .cards { grid-template-columns: 1fr; }
+  html.m .mpath { grid-template-columns: 1fr 1fr; }
+}

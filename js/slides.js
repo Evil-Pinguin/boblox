@@ -99,8 +99,8 @@ const ALL_SLIDES = [
       <div class="mpath">
         ${[['💡', 'Придумать'], ['🎨', 'Спроектировать'], ['💻', 'Создать'], ['🤖', 'Позвать ИИ'], ['🧪', 'Проверить'], ['🚀', 'Опубликовать']]
           .map(([i, t], k) => `<div class="mnode${k >= 4 && DAYS_ENABLED < 2 ? ' later' : ''}${k === 5 ? ' last' : ''}"><div class="mc"><i>${k + 1}</i>${i}</div><span>${t}</span></div>`).join('')}
-        <div class="mday d1">ДЕНЬ 1 · СОЗДАЁМ</div>
-        <div class="mday d2${DAYS_ENABLED < 2 ? ' later' : ''}">ДЕНЬ 2 · ЗАПУСКАЕМ</div>
+        <div class="mday d1">ДЕНЬ 1 · СОЗДАЁМ · шаги 1–4</div>
+        <div class="mday d2${DAYS_ENABLED < 2 ? ' later' : ''}">ДЕНЬ 2 · ЗАПУСКАЕМ · 5–6</div>
       </div>
       <div class="m-now">Собрано блоков: <b data-bind="blocks"></b></div>`,
     action: {

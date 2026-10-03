@@ -98,6 +98,7 @@
     area.innerHTML = '';
     const slide = el('section', `slide ${s.cover ? 'is-cover' : ''} ${dir > 0 ? 'in-right' : 'in-left'}`, s.body);
     area.appendChild(slide);
+    if (document.documentElement.classList.contains('m')) window.scrollTo(0, 0);
     slide.prepend(el('div', 'slide-no', String(i + 1).padStart(2, '0')));
 
     renderPanel(s, slide);
@@ -526,7 +527,12 @@
   window.addEventListener('hashchange', () => { const n = parseInt(location.hash.slice(1), 10); if (n >= 1 && n <= total && n - 1 !== state.i) go(n - 1); });
 
   /* ---------- масштабирование сцены 1280×720 ---------- */
+  // Телефон / планшет вертикально: обычная адаптивная вёрстка (css/mobile.css). Широкий экран: сцена 1280×720 с масштабом.
+  const isMobile = () => innerWidth < 640 || innerWidth / innerHeight < 1.1;
   function fit() {
+    const m = isMobile();
+    document.documentElement.classList.toggle('m', m);
+    if (m) { stage.style.transform = ''; return; }
     const sc = Math.min(innerWidth / W, innerHeight / H);
     stage.style.transform = `translate(-50%, -50%) scale(${sc})`;
   }
