@@ -72,7 +72,7 @@
       case 'chips': return Array.isArray(v) && v.length >= (f.min || 1) && v.length <= (f.max || 99);
       case 'checklist': return Array.isArray(v) && f.items.every((_, k) => v[k]);
       case 'lesson': return !!(state.data['lesson_' + f.lesson] && state.data['lesson_' + f.lesson].done);
-      case 'gate': return SLIDES.slice(0, -1).every((x) => state.done[x.id]);
+      case 'gate': return SLIDES.slice(0, state.i).every((x) => state.done[x.id]);
       case 'quiz': return state.data[f.key] === true;
       default: return true;
     }
@@ -105,7 +105,7 @@
     addCopyButtons(slide);
     initTimer(slide);
     const of = $('#openFinal', slide);
-    if (of) { of.disabled = !isDone(i); of.onclick = openFinal; }
+    if (of) { of.disabled = !isDone(i); of.onclick = () => openFinal(s); }
     refreshBinds();
     renderBricks();
     $('#prev').style.visibility = i === 0 ? 'hidden' : 'visible';
@@ -311,11 +311,12 @@
     }
 
     if (f.type === 'gate') {
-      const left = SLIDES.slice(0, -1).filter((x) => !state.done[x.id]).length;
+      const before = SLIDES.slice(0, state.i);
+      const left = before.filter((x) => !state.done[x.id]).length;
       const box = el('div', `gate ${left ? 'locked' : 'open'}`);
       box.innerHTML = left
         ? `<b>🔒 Осталось собрать блоков: ${left}</b><span>Открой «Моя игра» — там видно, какие слайды пропущены.</span>`
-        : `<b>✅ Все ${total - 1} блоков собраны!</b><span>Осталось нажать кнопку справа.</span>`;
+        : `<b>✅ Все ${before.length} блоков собраны!</b><span>Осталось нажать кнопку справа.</span>`;
       if (left) { const b = el('button', 'btn small', '🧱 Показать пропущенные'); b.type = 'button'; b.onclick = openBuild; box.appendChild(b); }
       return box;
     }
@@ -349,7 +350,7 @@
     renderBricks(i);
     $('#next').classList.add('ready');
     const of = $('#openFinal'); if (of) of.disabled = false;
-    if (i === total - 1) { openFinal(); return; }
+    if (s.final) { openFinal(s); return; }
     showToast(s, doneCount());
     burst(40);
   }
@@ -402,8 +403,8 @@
   }
 
   /* ---------- финальный экран ---------- */
-  function openFinal() {
-    const cfg = SLIDES[total - 1].finalCfg;
+  function openFinal(slide) {
+    const cfg = (slide || SLIDES[state.i]).finalCfg;
     $('#final').innerHTML = `<div class="final-box">
       <div class="fn-head">${cfg.head}</div>
       <div class="fn-title" id="fnTitle" data-bind="title" data-fallback="МОЯ ИГРА"></div>

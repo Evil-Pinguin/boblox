@@ -394,4 +394,166 @@ const LESSONS = {
         code: 'local item = script.Parent\nlocal points = {{pickupPts}}\n\nitem.Touched:Connect(function(hit)\n  item:Destroy()\n  print("{{pickupMsg}} +" .. points)\nend)' },
     ],
   },
+
+  /* ───────── Урок 5: повторяем и ждём ───────── */
+  loop: {
+    title: 'Урок 5 · Повторяй и жди',
+    icon: '⏱️',
+    defaults: { lampColor: 'Hot pink' },
+    summary: 'Теперь ты умеешь повторять команды, ждать и считать назад. Скопируй мигающую лампу в Studio!',
+    steps: [
+      { type: 'learn', title: 'Повторяем: for',
+        text: 'Чтобы не писать одно и то же много раз, есть <b>for</b>. Он повторяет команды. Цифры показывают: <b>с какого раза и до какого</b>.',
+        code: 'for i = 1, 3 do\n  print("Привет!")\nend', out: 'Привет!\nПривет!\nПривет!' },
+
+      { type: 'fill', title: 'Повтори по примеру',
+        text: 'Сделай так, чтобы слово напечаталось <b>5 раз</b>. Какое число поставить в конце?',
+        example: { code: 'for i = 1, 3 do\n  print("Привет!")\nend', label: 'Пример', mark: [0] },
+        code: 'for i = 1, ___ do\n  print("Привет!")\nend', bank: ['3', '5', '10'], answer: ['5'],
+        out: 'Привет!\nПривет!\nПривет!\nПривет!\nПривет!', hint: 'Нужно 5 раз — значит, считаем от 1 до 5.' },
+
+      { type: 'choice', title: 'Сколько раз?',
+        text: 'Сколько раз напечатается слово?',
+        code: 'for i = 1, 4 do\n  print("Ура!")\nend',
+        options: ['4 раза', '1 раз', '5 раз'], answer: 0,
+        hint: 'От 1 до 4 — это 1, 2, 3, 4. Четыре раза.', explain: 'Верно! Считаем: 1, 2, 3, 4.' },
+
+      { type: 'learn', title: 'Ждём: task.wait',
+        text: '<b>task.wait(1)</b> значит «подожди 1 секунду». Так можно делать паузы в игре.',
+        code: 'print("Раз")\ntask.wait(1)\nprint("Два")', out: 'Раз\n(пауза 1 секунда)\nДва' },
+
+      { type: 'fill', title: 'Повтори по примеру',
+        text: 'Нужна пауза в <b>2 секунды</b>. Какое число поставить?',
+        example: { code: 'print("Раз")\ntask.wait(1)\nprint("Два")', label: 'Пример', mark: [1] },
+        code: 'print("Раз")\ntask.wait(___)\nprint("Два")', bank: ['1', '2', '60'], answer: ['2'],
+        hint: 'В скобках — сколько секунд ждать. Нужны 2.' },
+
+      { type: 'learn', title: 'Отсчёт назад',
+        text: 'Хочешь считать <b>назад</b>? Добавь третье число <b>-1</b>: «шагай на минус один». Так делают отсчёт перед стартом игры.',
+        code: 'for i = 3, 1, -1 do\n  print(i)\n  task.wait(1)\nend\nprint("Старт!")', out: '3\n2\n1\nСтарт!' },
+
+      { type: 'fill', title: 'Повтори по примеру',
+        text: 'Допиши число, которое заставляет считать <b>назад</b>.',
+        example: { code: 'for i = 3, 1, -1 do\n  print(i)\n  task.wait(1)\nend\nprint("Старт!")', label: 'Пример', mark: [0] },
+        code: 'for i = 3, 1, ___ do\n  print(i)\n  task.wait(1)\nend', bank: ['-1', '+1', '0'], answer: ['-1'],
+        out: '3\n2\n1', hint: 'Считаем назад — значит, шагаем на минус один.' },
+
+      { type: 'order', title: 'Собери отсчёт',
+        text: 'Собери скрипт отсчёта: сначала цикл, потом число, пауза, конец цикла, и в конце — «Старт!».',
+        lines: ['for i = 3, 1, -1 do', '  print(i)', '  task.wait(1)', 'end', 'print("Старт!")'], scramble: [3, 0, 4, 2, 1],
+        hint: 'Цикл начинается с for и закрывается словом end. «Старт!» — после end.', explain: 'Отсчёт собран!' },
+
+      { type: 'type', title: 'Начни отсчёт с пяти',
+        text: 'Хочешь отсчёт подлиннее? Начни его с числа <b>5</b>.',
+        example: { code: 'for i = 3, 1, -1 do\n  print(i)\n  task.wait(1)\nend', label: 'Пример', mark: [0] },
+        wrap: ['for i = ', ', 1, -1 do\n  print(i)\n  task.wait(1)\nend'], placeholder: '5', check: '^5$', out: '5\n4\n3\n2\n1',
+        hint: 'Впиши цифру 5.', explain: 'Теперь отсчёт идёт с пяти!' },
+
+      { type: 'learn', title: 'Повторяем всегда: while',
+        text: '<b>while true do</b> значит «пока правда» — то есть <b>всегда</b>. Так работает мигающая лампа: красный, пауза, зелёный, пауза — и по кругу.',
+        code: 'local lamp = script.Parent\n\nwhile true do\n  lamp.BrickColor = BrickColor.new("Bright red")\n  task.wait(1)\n  lamp.BrickColor = BrickColor.new("Lime green")\n  task.wait(1)\nend' },
+
+      { type: 'choice', title: 'Как долго мигает лампа?',
+        text: 'Что делает <b>while true do</b>?',
+        options: ['Повторяет всегда, пока идёт игра', 'Выполняется один раз', 'Выполняется ровно 3 раза'], answer: 0,
+        hint: 'true — «правда». Правда всегда правда, поэтому цикл не заканчивается.', explain: 'Верно! Лампа мигает, пока идёт игра.' },
+
+      { type: 'type', title: 'Выбери цвет мигания',
+        text: 'Впиши цвет для второй вспышки: <b>Hot pink</b>, <b>Bright blue</b> или <b>Bright yellow</b>.',
+        example: { code: 'while true do\n  lamp.BrickColor = BrickColor.new("Bright red")\n  task.wait(1)\nend', label: 'Пример', mark: [1] },
+        wrap: ['  lamp.BrickColor = BrickColor.new("', '")'], placeholder: 'Hot pink', check: '^(Hot pink|Bright blue|Bright yellow)$', save: 'lampColor', run: false,
+        hint: 'Впиши один из трёх цветов, буквы — как в подсказке.', explain: 'Лампа будет мигать красным и твоим цветом!' },
+
+      { type: 'order', title: 'Собери мигалку',
+        text: 'Собери основу лампы: берём блок, запускаем вечный цикл, красим, ждём, закрываем.',
+        lines: ['local lamp = script.Parent', 'while true do', '  lamp.BrickColor = BrickColor.new("Bright red")', '  task.wait(1)', 'end'], scramble: [4, 2, 0, 3, 1],
+        hint: 'Сначала local lamp = script.Parent, а в конце end.', explain: 'Лампа готова мигать!' },
+
+      { type: 'learn', title: 'Готово! Вот твоя лампа',
+        text: 'Скопируй скрипт в <b>Script</b> внутри блока-лампы в Roblox Studio и нажми Play. Лампа мигает красным и твоим цветом.',
+        copy: true,
+        code: 'local lamp = script.Parent\n\nwhile true do\n  lamp.BrickColor = BrickColor.new("Bright red")\n  task.wait(1)\n  lamp.BrickColor = BrickColor.new("{{lampColor}}")\n  task.wait(1)\nend' },
+    ],
+  },
+
+  /* ───────── Урок 6: секретная дверь ───────── */
+  door: {
+    title: 'Урок 6 · Секретная дверь',
+    icon: '🚪',
+    defaults: { doorMsg: 'Секретная дверь открыта!' },
+    summary: 'Ты собрал дверь с ключом! Не забудь добавить в дверь ClickDetector — и проверь в Play.',
+    steps: [
+      { type: 'learn', title: 'Сквозь блок',
+        text: '<b>CanCollide</b> — «можно ли удариться о блок». Если поставить <b>false</b> — игрок пройдёт сквозь блок, как сквозь призрака.',
+        code: 'local wall = script.Parent\nwall.CanCollide = false' },
+
+      { type: 'choice', title: 'Что случится?',
+        text: 'Что будет с игроком, если написать <b>CanCollide = false</b>?',
+        options: ['Пройдёт сквозь блок', 'Упрётся в стену', 'Блок станет красным'], answer: 0,
+        hint: 'Collide значит «сталкиваться». false — столкновения нет.', explain: 'Да! Блок станет «призраком» для игрока.' },
+
+      { type: 'fill', title: 'Сделай проход',
+        text: 'Сделай так, чтобы игрок мог <b>пройти</b> сквозь стену.',
+        example: { code: 'local wall = script.Parent\nwall.CanCollide = false', label: 'Пример', mark: [1] },
+        code: 'local wall = script.Parent\nwall.CanCollide = ___', bank: ['true', 'false'], answer: ['false'],
+        hint: 'Чтобы пройти, столкновения быть не должно — false.' },
+
+      { type: 'learn', title: 'Щёлкни по двери',
+        text: '<b>ClickDetector</b> — «ловец щелчков». Положи его в дверь (Explorer → <b>+</b> рядом с дверью → ClickDetector). Тогда код внутри <b>MouseClick</b> сработает, когда по двери щёлкнут мышкой.',
+        code: 'local door = script.Parent\nlocal detector = door.ClickDetector\n\ndetector.MouseClick:Connect(function()\n  print("Щёлк!")\nend)', out: 'Щёлк!  (когда щёлкнули по двери)' },
+
+      { type: 'choice', title: 'Когда сработает код?',
+        text: 'Когда выполнится код внутри <b>MouseClick</b>?',
+        options: ['Когда щёлкнули мышкой по двери', 'Сразу, когда игра началась', 'Никогда'], answer: 0,
+        hint: 'MouseClick — это щелчок мышкой.', explain: 'Верно! Код ждёт щелчка.' },
+
+      { type: 'fill', title: 'Повтори по примеру',
+        text: 'Найди слово, которое значит «щёлкнули мышкой».',
+        example: { code: 'local door = script.Parent\nlocal detector = door.ClickDetector\n\ndetector.MouseClick:Connect(function()\n  print("Щёлк!")\nend)', label: 'Пример', mark: [3] },
+        code: 'detector.___:Connect(function()', bank: ['MouseClick', 'Touched', 'Destroy'], answer: ['MouseClick'],
+        hint: 'Это слово стоит в четвёртой строке примера.' },
+
+      { type: 'learn', title: 'Дверь открывается',
+        text: 'Чтобы дверь «открылась», сделаем её почти прозрачной и уберём столкновение. Это два свойства, которые ты уже знаешь!',
+        code: 'detector.MouseClick:Connect(function()\n  door.Transparency = 0.8\n  door.CanCollide = false\n  print("Дверь открыта!")\nend)', out: 'Дверь открыта!' },
+
+      { type: 'order', title: 'Собери открывание',
+        text: 'Собери скрипт открывания двери по порядку.',
+        lines: ['detector.MouseClick:Connect(function()', '  door.Transparency = 0.8', '  door.CanCollide = false', 'end)'], scramble: [3, 2, 0, 1],
+        hint: 'Первая строка — detector.MouseClick…, последняя — end).', explain: 'Дверь открывается по порядку!' },
+
+      { type: 'type', title: 'Придумай сообщение',
+        text: 'Что напишет игра, когда дверь откроется? Например: <b>Секретная дверь открыта!</b>',
+        example: { code: 'detector.MouseClick:Connect(function()\n  door.Transparency = 0.8\n  door.CanCollide = false\n  print("Дверь открыта!")\nend)', label: 'Пример', mark: [3] },
+        wrap: ['  print("', '")'], placeholder: 'Секретная дверь открыта!', check: '^[^"\']{2,30}$', save: 'doorMsg', run: false, showOut: 'text',
+        hint: 'Впиши любые слова без кавычек.', explain: 'Отлично! Это сообщение появится в игре.' },
+
+      { type: 'learn', title: 'Нужен ключ: not',
+        text: 'Слово <b>not</b> значит «НЕ». Если ключа нет — написать «Нужен ключ!». Так дверь не откроется без ключа.',
+        code: 'local hasKey = false\n\nif not hasKey then\n  print("Нужен ключ!")\nend', out: 'Нужен ключ!' },
+
+      { type: 'choice', title: 'Что напечатает код?',
+        text: 'У героя ключ <b>есть</b> (hasKey = true). Что напечатает код?',
+        code: 'local hasKey = true\n\nif not hasKey then\n  print("Нужен ключ!")\nend',
+        options: ['Ничего', 'Нужен ключ!', 'Дверь открыта!'], answer: 0,
+        hint: 'not hasKey — «ключа НЕТ». Но ключ есть, значит, условие неверное.', explain: 'Верно! Ключ есть, поэтому предупреждения нет.' },
+
+      { type: 'fill', title: 'Повтори по примеру',
+        text: 'Допиши слово: «если ключа <b>НЕТ</b>».',
+        example: { code: 'local hasKey = false\n\nif not hasKey then\n  print("Нужен ключ!")\nend', label: 'Пример', mark: [2] },
+        code: 'local hasKey = false\n\nif ___ hasKey then\n  print("Нужен ключ!")\nend', bank: ['not', 'and', 'end'], answer: ['not'],
+        out: 'Нужен ключ!', hint: 'Слово «не» по-английски — not.' },
+
+      { type: 'type', title: 'Выдай герою ключ',
+        text: 'Дай герою ключ: впиши <b>true</b> («да, есть»). Тогда дверь откроется.',
+        example: { code: 'local hasKey = false\n\nif hasKey then\n  print("Дверь открыта!")\nend', label: 'Пример', mark: [0] },
+        wrap: ['local hasKey = ', '\n\nif hasKey then\n  print("Дверь открыта!")\nend'], placeholder: 'true', check: '^true$', out: 'Дверь открыта!',
+        hint: 'Впиши слово true маленькими буквами.', explain: 'Ключ есть — дверь открыта!' },
+
+      { type: 'learn', title: 'Готово! Дверь с ключом',
+        text: 'Скопируй скрипт в <b>Script</b> внутри двери. Не забудь добавить в дверь <b>ClickDetector</b>. Сначала проверь с ключом (<b>hasKey = true</b>), потом поменяй на <b>false</b> — дверь не откроется!',
+        copy: true,
+        code: 'local door = script.Parent\nlocal detector = door.ClickDetector\nlocal hasKey = true\n\ndetector.MouseClick:Connect(function()\n  if hasKey then\n    door.Transparency = 0.8\n    door.CanCollide = false\n    print("{{doorMsg}}")\n  else\n    print("Нужен ключ!")\n  end\nend)' },
+    ],
+  },
 };

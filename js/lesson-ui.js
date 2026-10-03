@@ -127,7 +127,7 @@
     main.appendChild(el('h2', 'l-title', s.title));
     if (s.text) main.appendChild(el('p', 'l-text', s.text));
     const nl = (t) => (t ? t.split('\n').length : 0);
-    if ((s.type === 'choice' && nl(s.code) >= 3) || (s.type === 'order' && s.lines.length >= 4) || (s.example && nl(s.example.code) >= 6) || nl(s.code) >= 6) main.classList.add('dense');
+    if ((s.type === 'choice' && nl(s.code) >= 3) || (s.type === 'order' && s.lines.length >= 4) || (s.example && nl(s.example.code) >= 5) || nl(s.code) >= 5 || nl(s.out) >= 3) main.classList.add('dense');
     if (s.example) { main.classList.add('has-ex'); exampleBox(main, s.example); }
 
     if (s.type === 'learn') codeBlock(main, sub(s.code), s.copy);
@@ -230,7 +230,9 @@
   function codeBlock(parent, code, copy, open) {
     const wrap = el('div', 'l-codewrap');
     const pre = el('pre', 'l-code mono'); pre.textContent = code;
-    if (code.split('\n').length > 7) pre.classList.add('long');
+    const nlines = code.split('\n').length;
+    if (nlines > 7) pre.classList.add('long');
+    if (nlines > 10) pre.classList.add('xlong');
     wrap.appendChild(pre);
     if (open) pre.classList.add('open');
     if (copy) {

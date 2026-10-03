@@ -686,3 +686,14 @@ html[data-theme="light"] .ra-mock { --text:#f2f5ff; --muted:#9fb0d8; --ink:#fff;
 .l-main.dense .l-opt b { width: 28px; height: 28px; }
 .l-main.dense .ol { min-height: 34px; padding: 4px 14px; font-size: 19px; }
 .l-main.dense .l-out { font-size: 19px; padding: 6px 16px; }
+
+/* план-лесенка рядом с текстом */
+.split.vpl { grid-template-columns: 1.35fr 1fr; gap: 20px; }
+.split.vpl .vplan { width: 100%; }
+.split.vpl .vp-item { grid-template-columns: 38px 150px 1fr; gap: 8px; }
+.split.vpl .vp-item span { font-size: 20px; }
+.split.vpl .vp-item em { font-size: 15px; }
+.split.vpl .quote { font-size: 17px; }
+.l-code.xlong { font-size: 17px; line-height: 1.35; padding: 8px 16px; }
+.l-main.dense .l-code.xlong { font-size: 17px; }
+.l-main.dense .l-code.long { font-size: 19px; }

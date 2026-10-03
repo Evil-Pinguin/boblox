@@ -1,4 +1,4 @@
-/* Данные презентации: День 1 — 26 слайдов + итог, День 2 — 9 слайдов (включается флагом ниже).
+/* Данные презентации: День 1 — 25 слайдов + итог Дня 1, День 2 — 16 слайдов (включается флагом ниже).
    ВАЖНО: переключатель DAYS_ENABLED ниже. 1 = только День 1 (+ итоговый слайд), 2 = полная презентация.
    У каждого слайда: section, title, body (HTML), action (что сделать), reward (какую часть игры получишь).
 
@@ -12,13 +12,14 @@
    field.slot — если указан, поле рисуется внутри тела слайда в <div data-slot="...">.
    data-bind="key" в теле слайда — подставляет ответы ребёнка прямо в слайд. */
 
-const DAYS_ENABLED = 1;   // ← поставь 2, чтобы вернуть День 2
+const DAYS_ENABLED = 2;   // 1 = только День 1, 2 = День 1 + День 2
 
 /* Порядок слайдов (по id). Прогресс хранится по id, поэтому слайды можно вставлять и менять местами. */
 const DAY1_IDS = ['cover', 'mission', 'howto', 'plan', 'team', 'concept', 'title', 'genre', 'inspiration', 'aisafe', 'aicoauthor', 'prompt',
   'world', 'map', 'style', 'studio', 'windows', 'parts', 'build', 'robloxai', 'scriptwhere', 'lua', 'luaprops', 'luaif', 'ailua'];
-const DAY2_IDS = ['day2', 'cutscene', 'mechanic', 'feature', 'secret', 'final', 'devstand', 'test', 'finale'];
-const ORDER = DAYS_ENABLED >= 2 ? [...DAY1_IDS, ...DAY2_IDS] : [...DAY1_IDS, 'day1finale'];
+const DAY2_IDS = ['day2', 'plan2', 'cutscene', 'cutstudio', 'mechanic', 'lualoop', 'feature', 'secret', 'luadoor', 'final', 'devstand', 'test',
+  'publish', 'audience', 'feedback', 'finale'];
+const ORDER = DAYS_ENABLED >= 2 ? [...DAY1_IDS, 'day1finale', ...DAY2_IDS] : [...DAY1_IDS, 'day1finale'];
 const TOTAL = ORDER.length;
 
 const SECTIONS = {
@@ -382,17 +383,18 @@ const ALL_SLIDES = [
     id: 'day2',
     section: 'day2', title: 'День 2',
     body: `
-      <h2>🚀 День 2</h2>
+      <h2>🚀 День 2 — ЗАПУСКАЕМ</h2>
       <div class="vs">
-        <div class="vs-card"><h3>ВЧЕРА:</h3><div class="flow col"><span>идея</span>→<span>карта</span>→<span>механика</span></div></div>
-        <div class="vs-card good"><h3>СЕГОДНЯ:</h3>
-          <ul class="ilist"><li>🎬 сюжет</li><li>🎯 геймплей</li><li>⭐ фишка</li><li>🔐 секрет</li><li>🏁 финал</li><li>🚀 публикация</li></ul>
+        <div class="vs-card"><h3>ВЧЕРА У ТЕБЯ УЖЕ ЕСТЬ:</h3>
+          <ul class="ilist" style="grid-template-columns:1fr"><li>💡 идея: <b data-bind="title" data-fallback="твоя игра"></b></li><li>🗺 карта в Studio</li><li>⌨️ первые скрипты на Lua</li></ul>
+        </div>
+        <div class="vs-card good"><h3>СЕГОДНЯ ДОБАВИМ:</h3>
+          <ul class="ilist" style="grid-template-columns:1fr"><li>🎬 сюжет и катсцену</li><li>🎯 механику и фишку</li><li>🔐 секрет и финал</li><li>🚀 публикацию в Roblox</li></ul>
         </div>
       </div>`,
     action: {
-      text: 'Открой вчерашний проект в Studio и нажми Play — убедись, что всё на месте.',
-      button: 'Проект открыт',
-      fields: [],
+      text: 'Открой вчерашний проект в Studio, нажми Play — и отметь, что всё на месте.',
+      fields: [{ type: 'checklist', key: 'day2Check', inline: true, items: ['Проект открылся', 'Карта на месте', 'Play работает'] }],
     },
     reward: { icon: '🚀', name: 'Старт Дня 2' },
   },
@@ -467,9 +469,9 @@ const ALL_SLIDES = [
 
   /* 22 */ {
     id: 'final',
-    section: 'day2', title: 'Финал',
+    section: 'day2', title: 'Финиш игры',
     body: `
-      <h2>🏁 Финал</h2>
+      <h2>🏁 Финиш игры</h2>
       <div class="flow big"><span>ИГРА</span>→<span>ЦЕЛЬ</span>→<span class="gold">ФИНАЛЬНАЯ КАТСЦЕНА</span></div>
       <p class="lead">Игрок должен понимать:</p>
       <div class="bigquote">«Я прошёл игру».</div>`,
@@ -519,7 +521,7 @@ const ALL_SLIDES = [
       <p class="callout"><b>Поиграй в свою игру как обычный игрок.</b></p>`,
     action: {
       text: 'Проверь игру в Studio и отметь все 8 пунктов — честно!',
-      fields: [{ type: 'checklist', slot: 'tests', key: 'tests', cols: 2, items: ['Игра запускается', 'Меню работает', 'Катсцена работает', 'Предмет собирается', 'Препятствие работает', 'Есть секретка', 'Есть финал', 'Нет критических ошибок'] }],
+      fields: [{ type: 'checklist', slot: 'tests', key: 'tests', cols: 2, items: ['Игра запускается', 'Катсцена показывается', 'Предмет собирается', 'Лампа или таймер работают', 'Секретная дверь открывается', 'Есть финал', 'Нет критических ошибок', 'Друг проверил игру'] }],
     },
     reward: { icon: '🧪', name: 'Печать качества' },
   },
@@ -576,6 +578,7 @@ const DAY1_FINALE = {
         <div class="cover-sub">ДЕНЬ 1 ПРОЙДЕН!</div>
         <div class="formula mono">ИДЕЯ → МИР → КОД</div>
         <p class="final-big">Ты уже придумал игру, нарисовал карту и написал <b>первый код.</b></p>
+        ${DAYS_ENABLED >= 2 ? '<p class="callout">Сохрани проект в Studio (<b>Ctrl + S</b>). Завтра: катсцена, механика, фишка и публикация!</p>' : ''}
         <button class="btn open-final" id="openFinal" disabled>🎉 Открыть итоговый экран</button>
       </div>
       <div class="gamecard" id="gameCard">
@@ -773,6 +776,126 @@ end</pre>
   },
 ];
 
+
+/* ───────── День 2: новые слайды ───────── */
+const luaSlide = ({ id, icon, title, lead, demo, list, ask, slot, lesson, rewardIcon, rewardName, text }) => ({
+  id, section: 'day2', title,
+  body: `
+    <h2>${icon} ${title} <small>ТРЕНАЖЁР LUA</small></h2>
+    <p class="lead">${lead}</p>
+    <div class="split">
+      <div>
+        <pre class="demo-code mono">${demo}</pre>
+        <div data-slot="${slot}"></div>
+      </div>
+      <div>
+        <p class="lead">${ask}</p>
+        <ul class="ilist">${list.map((t) => `<li>${t}</li>`).join('')}</ul>
+      </div>
+    </div>`,
+  action: { text, fields: [{ type: 'lesson', slot, key: slot, lesson }] },
+  reward: { icon: rewardIcon, name: rewardName },
+});
+
+const DAY2_EXTRA = [
+  {
+    id: 'plan2', section: 'day2', title: 'План Дня 2',
+    body: `
+      <h2>🗓 План Дня 2</h2>
+      ${vplan([['01', 'Катсцена', 'начало игры: что видит игрок'], ['02', 'Механика', 'что игрок делает'], ['03', 'Фишка и секрет', 'чем игра особенная'],
+        ['04', 'Финал', 'как игрок побеждает'], ['05', 'Тест', 'ищем ошибки'], ['06', 'Публикация', 'игра в Roblox']])}`,
+    action: {
+      text: 'Проверь себя: что в плане дня — самое последнее?',
+      fields: [{ type: 'quiz', key: 'quizPlan2', answer: 0, options: ['Публикация', 'Катсцена', 'Тест'], hint: 'Загляни в конец плана: последняя строка — игра в Roblox.' }],
+    },
+    reward: { icon: '🗓', name: 'План Дня 2' },
+  },
+
+  {
+    id: 'cutstudio', section: 'day2', title: 'Катсцена в Studio',
+    body: `
+      <h2>📺 Текст катсцены в игре</h2>
+      <div class="split vpl">
+        ${vplan([['1', 'StarterGui', 'нажми + рядом с StarterGui'], ['2', 'ScreenGui', 'выбери ScreenGui в списке'], ['3', 'TextLabel', 'нажми + на ScreenGui → TextLabel'],
+          ['4', 'Text', 'в Properties впиши свой текст']])}
+        <div>
+          <p class="lead"><b>Или попроси Assistant:</b></p>
+          ${q('«Сделай в StarterGui экран с текстом по центру: <span data-bind="cutscene" data-fallback="…твоя катсцена…"></span>»')}
+        </div>
+      </div>`,
+    action: {
+      text: 'Проверь себя: куда кладём ScreenGui, чтобы текст увидел игрок?',
+      fields: [{ type: 'quiz', key: 'quizCut', answer: 0, options: ['StarterGui', 'Workspace', 'Output'], hint: 'Starter значит «стартовый»: всё из StarterGui появляется у игрока на экране.' }],
+    },
+    reward: { icon: '📺', name: 'Текст в игре' },
+  },
+
+  luaSlide({
+    id: 'lualoop', icon: '💡', title: 'Повторяем и ждём',
+    lead: '<b>Код умеет повторять и ждать.</b> Так делают таймеры, отсчёты и мигающие лампы.',
+    demo: 'for i = 3, 1, -1 do\n  print(i)\n  task.wait(1)\nend',
+    ask: 'Где пригодится в игре:', list: ['⏱ отсчёт перед стартом', '💡 мигающая лампа', '🌊 то, что повторяется снова и снова'],
+    slot: 'lua5', lesson: 'loop', rewardIcon: '💡', rewardName: 'Скрипт-мигалка',
+    text: 'Пройди урок 5: for, task.wait и while. В конце получишь мигающую лампу.',
+  }),
+
+  luaSlide({
+    id: 'luadoor', icon: '🚪', title: 'Секретная дверь',
+    lead: '<b>Дверь открывается, когда игрок щёлкнул по ней — и у него есть ключ.</b>',
+    demo: 'detector.MouseClick:Connect(function()\n  door.CanCollide = false\nend)',
+    ask: 'Где пригодится в игре:', list: ['🔑 дверь с ключом', '🕵️ секретная комната', '🏆 путь к финалу'],
+    slot: 'lua6', lesson: 'door', rewardIcon: '🚪', rewardName: 'Секретная дверь',
+    text: 'Пройди урок 6: CanCollide, ClickDetector и not. В конце получишь дверь с ключом.',
+  }),
+
+  {
+    id: 'publish', section: 'day2', title: 'Публикация',
+    body: `
+      <h2>🚀 Публикуем игру</h2>
+      <div class="split vpl">
+        ${vplan([['1', 'File', '⟩ Publish to Roblox'], ['2', 'Name', 'название твоей игры'], ['3', 'Description', '1–2 предложения'], ['4', 'Create', 'нажми «Create»']])}
+        <div>
+          <p class="lead"><b>Описание поможет написать ИИ:</b></p>
+          ${q('«Опиши игру Roblox в 2 предложениях: жанр, что делает игрок, фишка.»')}
+          <p class="callout"><b>Новая игра приватная</b> — её видишь только ты.</p>
+        </div>
+      </div>`,
+    action: {
+      text: 'Напиши описание игры: что это за игра и что в ней делает игрок.',
+      fields: [{ type: 'area', key: 'gameDesc', label: 'Описание игры', placeholder: 'Ты заперт в лаборатории. Найди ключи и открой секретную дверь!', words: 6 }],
+    },
+    reward: { icon: '🚀', name: 'Страница игры' },
+  },
+
+  {
+    id: 'audience', section: 'day2', title: 'Кому показать игру',
+    body: `
+      <h2>🔒 Кому показать игру?</h2>
+      ${tiles([['🔒', 'Private — видишь только ты'], ['👥', 'Friends — только друзья'], ['🌍', 'Public — все игроки (только с взрослым)']], 'cols3')}
+      <p class="lead">Где менять:</p>
+      <div class="flow"><span>create.roblox.com</span>→<span>твоя игра</span>→<span>Configure</span>→<span>Settings</span>→<span class="gold">Audience</span></div>`,
+    action: {
+      text: 'Выбери, кому ты сначала покажешь игру. Public — только вместе со взрослым!',
+      fields: [{ type: 'chips', key: 'audience', min: 1, max: 1, options: ['🔒 Private', '👥 Friends', '🌍 Public с взрослым'] }],
+    },
+    reward: { icon: '🔒', name: 'Безопасный доступ' },
+  },
+
+  {
+    id: 'feedback', section: 'day2', title: 'Отзыв игрока',
+    body: `
+      <h2>💬 Отзыв игрока</h2>
+      <p class="lead"><b>Дай другу или взрослому поиграть 3 минуты — и не подсказывай!</b> Потом спроси:</p>
+      ${tiles([['😀', 'Что понравилось?'], ['🤔', 'Где запутался?'], ['🔧', 'Что улучшить?']], 'cols3')}
+      <p class="callout"><b>Хороший разработчик слушает игроков.</b></p>`,
+    action: {
+      text: 'Спроси игрока и запиши одним предложением, что он сказал.',
+      fields: [{ type: 'text', key: 'feedback', label: 'Что сказал игрок', placeholder: 'Понравилась лампа, но дверь трудно найти', min: 6 }],
+    },
+    reward: { icon: '💬', name: 'Отзыв игрока' },
+  },
+];
+
 const BY_ID = {};
-[...ALL_SLIDES, ...EXTRA_SLIDES, DAY1_FINALE].forEach((sl) => { BY_ID[sl.id] = sl; });
+[...ALL_SLIDES, ...EXTRA_SLIDES, ...DAY2_EXTRA, DAY1_FINALE].forEach((sl) => { BY_ID[sl.id] = sl; });
 const SLIDES = ORDER.map((id) => BY_ID[id]);
