@@ -1,0 +1,15 @@
+# Local build output. Blacksite.rbxlx at the repo root is the shipped place file and IS
+# tracked; anything you build into build/ is scratch.
+build/
+*.rbxl
+*.rbxlx.lock
+
+# Python test tooling
+__pycache__/
+*.pyc
+.venv/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store

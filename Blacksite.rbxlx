@@ -1,0 +1,5973 @@
+<?xml version="1.0" encoding="utf-8"?>
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="ReplicatedStorage" referent="RBX6"><Properties></Properties><Item class="ModuleScript" referent="RBX1"><Properties><string name="Name">Attributes</string><ProtectedString name="Source">--[[
+	Attributes - the replication layer.
+
+	Rather than streaming a table of HUD numbers over a RemoteEvent every tick, the
+	server writes them onto the Player and round Folder as attributes and the client
+	just reads them. This module exists so nothing writes an attribute without first
+	checking that it changed - an unthrottled SetAttribute at 20 Hz is 20 packets per
+	property per player, which is how horror games turn into lag simulators.
+]]
+
+local Attributes = {}
+
+local EPSILON = 0.02
+
+--- Write a number/string/bool attribute only if it meaningfully changed.
+function Attributes.set(inst, name, value, tolerance)
+	if not inst then
+		return
+	end
+
+	local old = inst:GetAttribute(name)
+
+	if type(value) == "number" and type(old) == "number" then
+		if math.abs(old - value) &lt; (tolerance or EPSILON) then
+			return
+		end
+	elseif old == value then
+		return
+	end
+
+	inst:SetAttribute(name, value)
+end
+
+function Attributes.get(inst, name, default)
+	if not inst then
+		return default
+	end
+	local value = inst:GetAttribute(name)
+	if value == nil then
+		return default
+	end
+	return value
+end
+
+--- Convenience for the client: read a number attribute with a fallback.
+function Attributes.num(inst, name, default)
+	local value = inst and inst:GetAttribute(name)
+	if type(value) ~= "number" then
+		return default or 0
+	end
+	return value
+end
+
+return Attributes
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX2"><Properties><string name="Name">Config</string><ProtectedString name="Source">--[[
+	Blacksite - shared tunables.
+
+	Every number a designer would want to poke lives here. Distances are Roblox
+	studs (roughly 0.2 m each) and speeds are studs per second.
+
+	Nothing in this module may touch the DataModel, so it stays require-able from
+	both sides and testable from plain Lua.
+]]
+
+local Config = {}
+
+Config.Meta = {
+	Title = "BLACKSITE",
+	Subtitle = "SIGNAL LOST",
+	Version = "1.0.0",
+	-- Rotating this reshapes every maze on the next server start.
+	SeedSalt = "blacksite-v1",
+}
+
+---------------------------------------------------------------------------
+-- world
+---------------------------------------------------------------------------
+
+Config.World = {
+	CellsWide = 21, -- grid is (2*CellsWide-1) tiles across, so 41 here
+	CellsDeep = 21,
+	Tile = 12, -- corridor width, in studs
+	WallHeight = 11,
+	RoofHeight = 26,
+	Rooms = 6,
+	Braid = 0.55, -- how many dead ends get opened into loops
+	FloorColor = Color3.fromRGB(26, 27, 30),
+	RoofColor = Color3.fromRGB(18, 19, 21),
+	-- Small per-tile colour jitter keeps flat concrete from looking like a shoebox.
+	WallPalette = {
+		Color3.fromRGB(48, 49, 54),
+		Color3.fromRGB(41, 42, 47),
+		Color3.fromRGB(54, 51, 46),
+		Color3.fromRGB(36, 40, 42),
+	},
+	WallMaterials = {
+		Enum.Material.Concrete,
+		Enum.Material.Slate,
+		Enum.Material.CorrodedMetal,
+		Enum.Material.DiamondPlate,
+	},
+	LobbySize = 26,
+}
+
+---------------------------------------------------------------------------
+-- round flow
+---------------------------------------------------------------------------
+
+Config.Round = {
+	Intermission = 18, -- seconds in the lobby before the lift drops
+	Ingress = 4, -- fade-in / "you just woke up" beat
+	Limit = 360, -- hard time limit before the facility purges
+	PurgeWarn = 60, -- red lights + faster entity for the last minute
+	ResolveTime = 8, -- results screen
+	CellsNeeded = 5,
+	CellsSpawned = 5,
+	Batteries = 6,
+	Bandages = 4,
+	Lockers = 12,
+	Lamps = 10,
+	MinPlayerCount = 1, -- starts as soon as this many people are waiting
+}
+
+---------------------------------------------------------------------------
+-- the player
+---------------------------------------------------------------------------
+
+Config.Player = {
+	WalkSpeed = 16,
+	SprintSpeed = 27,
+	CrouchSpeed = 7.5,
+	JumpEnabled = false,
+	Lives = 3,
+	StaminaMax = 100,
+	StaminaDrain = 26,
+	StaminaRegen = 15,
+	StaminaRecoverLock = 0.8, -- pause before regen resumes after sprinting
+	CrouchRegenBonus = 10,
+	BatteryMax = 100,
+	BatteryDrain = 3.1,
+	BatteryFromPickup = 45,
+	GrabDamage = 34,
+	InvulnAfterGrab = 4.5,
+	RespawnHealth = 100,
+	MinSprintCost = 12, -- sprinting below this stamina is not allowed
+	HoldBreathDrain = 4, -- stamina cost per second while hidden (dread, not air)
+}
+
+---------------------------------------------------------------------------
+-- the Hollow
+---------------------------------------------------------------------------
+
+Config.Entity = {
+	Name = "THE HOLLOW",
+	Speeds = {
+		patrol = 9.5,
+		investigate = 14,
+		hunt = 18.6,
+	},
+	SightRange = 96,
+	CloseSenseRange = 34, -- inside this it no longer needs line of sight
+	FaceAngle = 100, -- degrees of forward vision
+	ContactRange = 7.5,
+	AttackCooldown = 2.6,
+	RepathInterval = 0.28,
+	SightMemory = 4.5, -- keeps hunting for this long after losing you
+	InvestigateTime = 7,
+	EnragePerLife = 1.35, -- speed added for every life the team has burned
+	PurgeSpeedBonus = 1.4,
+	RevealHold = 1.1, -- how long it stays outlined after your light catches it
+	KickInTime = 3.2, -- hunting at your locker for this long drags you out
+	KickRange = 15,
+	PatrolPickRadius = 9,
+	TeleportCooldown = 12, -- it repositions when it has been useless for a while
+	BodyColor = Color3.fromRGB(19, 19, 22),
+	EyeColor = Color3.fromRGB(206, 42, 34),
+	FadeTransparency = 0.62, -- unseen: barely a smudge
+	RevealTransparency = 0.04,
+}
+
+---------------------------------------------------------------------------
+-- noise: what the Hollow hears
+---------------------------------------------------------------------------
+
+Config.Noise = {
+	Sprint = 84,
+	Walk = 36,
+	Crouch = 11,
+	Interact = 58, -- grabbing a cell is loud
+	Locker = 30,
+	JogLoop = 0.42, -- how often sprinting re-emits a noise ping
+	HuntGain = 1.15, -- noise radius multiplier while it is already hunting
+}
+
+-- How the 0..1 "dread" value fed to the client is assembled.
+Config.Dread = {
+	Radius = 105,
+	HuntMult = 1,
+	InvestigateMult = 0.62,
+	PatrolMult = 0.36,
+	ProximityFalloff = 0.55, -- weight of pure closeness vs weight of state
+}
+
+---------------------------------------------------------------------------
+-- flashlight + camera feel
+---------------------------------------------------------------------------
+
+Config.Light = {
+	SpotAngle = 44,
+	SpotRange = 186,
+	SpotBrightness = 3.4,
+	SpotColor = Color3.fromRGB(252, 240, 214),
+	PointBrightness = 0.42,
+	PointRange = 13,
+	FlickerStart = 28, -- battery percent where the beam starts to struggle
+	FlickerDeath = 8,
+}
+
+Config.Camera = {
+	Fov = 70,
+	SprintFov = 79,
+	HiddenFov = 52,
+	BobFrequency = 8.5,
+	BobHeight = 0.32,
+	BobSide = 0.24,
+	BobTurn = 0.018,
+	Sway = 0.02,
+	ShakeDecay = 6,
+}
+
+Config.Effects = {
+	FogStart = 14,
+	FogEnd = 118,
+	FogColor = Color3.fromRGB(6, 7, 9),
+	Ambient = Color3.fromRGB(3, 4, 6),
+	PurgeFogColor = Color3.fromRGB(16, 3, 4),
+	BlurMax = 6,
+	VignetteMax = 0.92,
+	GrainBars = 12,
+	DreadShake = 1.15,
+}
+
+---------------------------------------------------------------------------
+-- optional audio
+---------------------------------------------------------------------------
+
+-- Roblox has no runtime audio synthesis and this repo ships zero uploaded assets,
+-- so every id starts empty and every call site is pcall-guarded. Paste rbxassetid
+-- strings here (Creator Store &gt; find a sound &gt; copy the id) and the game instantly
+-- gets footsteps, a heartbeat, stingers and the Hollow's scream.
+Config.Sounds = {
+	Heartbeat = "",
+	Scream = "",
+	Grab = "",
+	FootstepConcrete = "",
+	Sprint = "",
+	LockerOpen = "",
+	LockerClose = "",
+	CellTaken = "",
+	GateOpen = "",
+	Alarm = "",
+	Ambience = "",
+	StaticLoop = "",
+	Win = "",
+	Lose = "",
+}
+Config.SoundVolumes = {
+	Heartbeat = 0.55,
+	Ambience = 0.4,
+	Scream = 1,
+	Alarm = 0.85,
+}
+
+-- SurfaceGui copy uses this; keeps text out of the Lua where possible.
+Config.Copy = {
+	Objective = "RECOVER THE IGNITER CELLS",
+	Escaping = "THE GATE IS OPEN - RUN",
+	PurgeWarn = "PURGE IN %s - LEAVE NOW",
+	Hidden = "HOLD STILL",
+	Found = "IT HAS YOU",
+	Menu = "CLICK TO BEGIN",
+}
+
+return Config
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX3"><Properties><string name="Name">MazeGen</string><ProtectedString name="Source">--[[
+	MazeGen - deterministic, dependency-free maze generator.
+
+	Deliberately pure Lua (no Roblox globals) so it can be unit-tested outside of
+	Studio (see tools/test_maze.py). Everything works on a GRID of tiles:
+
+		+-----------------------------&gt; gx
+		|   . # . # . # .                 odd,odd   = cell (always open, walkable)
+		|   # # # # # #                   even,*    = wall between two cells
+		|   . # . . . #                   out of range = solid (virtual border)
+		|   # # # # # #
+		|   . # . # . #
+		v   . # . # . .
+		gy
+
+		gx ranges 1..(2*cellsWide-1), gy ranges 1..(2*cellsDeep-1). Wall thickness and
+		corridor width are both one tile, which keeps every query (line of sight,
+		pathfinding, world&lt;-&gt;tile conversion) integer and cheap.
+
+	World mapping: gx -&gt; Roblox X, gy -&gt; Roblox Z.
+]]
+
+local MazeGen = {}
+MazeGen.__index = MazeGen
+
+-- 32-bit LCG (numerical recipes). The largest intermediate product is
+-- 1664525 * 4294967296 ~= 7.15e15, which is still exact in a Lua double, so the
+-- modulo is precise. Do not raise the multiplier without re-checking that.
+local function makeRng(seed)
+	local s = math.floor(seed) % 4294967296
+	if s &lt; 0 then
+		s = s + 4294967296
+	end
+	local function nextU32()
+		s = (s * 1664525 + 1013904223) % 4294967296
+		return s
+	end
+	return {
+		next = nextU32,
+		float = function()
+			return nextU32() / 4294967296
+		end,
+		int = function(n)
+			if n &lt; 1 then
+				n = 1
+			end
+			return nextU32() % n + 1
+		end,
+		chance = function(p)
+			return nextU32() / 4294967296 &lt; p
+		end,
+	}
+end
+
+--- Stable string -&gt; int, so a shared round seed can be derived from a place id.
+function MazeGen.hashString(str)
+	local h = 2166136261
+	for i = 1, #str do
+		h = (h * 31 + string.byte(str, i)) % 2147483647
+	end
+	return h
+end
+
+---------------------------------------------------------------------------
+-- construction
+---------------------------------------------------------------------------
+
+--- opts = { cellsWide, cellsDeep, seed, braid, rooms }
+function MazeGen.new(opts)
+	opts = opts or {}
+	local cellsWide = math.max(3, math.floor(opts.cellsWide or 21))
+	local cellsDeep = math.max(3, math.floor(opts.cellsDeep or 21))
+
+	local self = setmetatable({}, MazeGen)
+	self.cellsWide = cellsWide
+	self.cellsDeep = cellsDeep
+	self.gridW = cellsWide * 2 - 1
+	self.gridH = cellsDeep * 2 - 1
+	self.tileScale = 1
+	self.rng = makeRng(opts.seed or 1337)
+
+	self.solid = {}
+	for gy = 1, self.gridH do
+		local row = {}
+		for gx = 1, self.gridW do
+			-- Cells are open, everything between them starts out solid.
+			row[gx] = (gx % 2 == 0) or (gy % 2 == 0)
+		end
+		self.solid[gy] = row
+	end
+
+	self:dig()
+	self:braid(opts.braid or 0.55)
+	self:carveRooms(opts.rooms or 5)
+
+	-- Airlock tile: middle of the west edge. The exit gate is built here, so the
+	-- objective loop is always "go deep, come back".
+	self.entryX = 1
+	self.entryY = 2 * math.floor(self.cellsDeep / 2) + 1
+	if self.entryY &gt; self.gridH then
+		self.entryY = self.gridH
+	end
+	self.solid[self.entryY][self.entryX] = false
+
+	return self
+end
+
+--- Randomised depth-first search: carve a spanning tree over the cells, opening
+--- the wall tile between each pair of cells we step to.
+function MazeGen:dig()
+	local rng = self.rng
+	local visited = {}
+	for gy = 1, self.gridH do
+		visited[gy] = {}
+	end
+
+	local stack = { { 1, 1 } }
+	visited[1][1] = true
+
+	while #stack &gt; 0 do
+		local cur = stack[#stack]
+		local cx, cy = cur[1], cur[2]
+
+		-- Fisher-Yates over the four cell steps.
+		local dirs = { { 2, 0 }, { -2, 0 }, { 0, 2 }, { 0, -2 } }
+		for i = #dirs, 2, -1 do
+			local j = rng.int(i)
+			dirs[i], dirs[j] = dirs[j], dirs[i]
+		end
+
+		local advanced = false
+		for i = 1, 4 do
+			local dx, dy = dirs[i][1], dirs[i][2]
+			local nx, ny = cx + dx, cy + dy
+			local inside = nx &gt;= 1 and ny &gt;= 1 and nx &lt;= self.gridW and ny &lt;= self.gridH
+			if inside and not visited[ny][nx] then
+				visited[ny][nx] = true
+				self.solid[cy + dy / 2][cx + dx / 2] = false
+				table.insert(stack, { nx, ny })
+				advanced = true
+				break
+			end
+		end
+
+		if not advanced then
+			table.remove(stack)
+		end
+	end
+end
+
+--- Braid: knock out some dead ends so a chase can loop instead of ending in a trap.
+function MazeGen:braid(amount)
+	if not amount or amount &lt;= 0 then
+		return
+	end
+	local rng = self.rng
+	local offsets = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
+	for cy = 1, self.gridH, 2 do
+		for cx = 1, self.gridW, 2 do
+			local open = 0
+			local closed = {}
+			for i = 1, 4 do
+				local ox, oy = offsets[i][1], offsets[i][2]
+				local nx, ny = cx + ox * 2, cy + oy * 2
+				if nx &gt;= 1 and ny &gt;= 1 and nx &lt;= self.gridW and ny &lt;= self.gridH then
+					if self.solid[cy + oy][cx + ox] then
+						table.insert(closed, { cx + ox, cy + oy })
+					else
+						open = open + 1
+					end
+				end
+			end
+			if open &lt;= 1 and #closed &gt; 0 and rng.chance(amount) then
+				local pick = closed[rng.int(#closed)]
+				self.solid[pick[2]][pick[1]] = false
+			end
+		end
+	end
+end
+
+--- Replace a block of walls with an open hall. Rooms are where props go.
+function MazeGen:carveRooms(count)
+	self.rooms = {}
+	if not count or count &lt;= 0 then
+		return self.rooms
+	end
+	local rng = self.rng
+	for _ = 1, count do
+		local w = rng.int(2) + 1 -- 2..3 cells
+		local h = rng.int(2) + 1
+		local ci = rng.int(math.max(1, self.cellsWide - w + 1)) - 1
+		local cj = rng.int(math.max(1, self.cellsDeep - h + 1)) - 1
+		local x0, y0 = ci * 2 + 1, cj * 2 + 1
+		local x1, y1 = (ci + w - 1) * 2 + 1, (cj + h - 1) * 2 + 1
+		for y = y0, y1 do
+			for x = x0, x1 do
+				if x &gt;= 1 and y &gt;= 1 and x &lt;= self.gridW and y &lt;= self.gridH then
+					self.solid[y][x] = false
+				end
+			end
+		end
+		table.insert(self.rooms, {
+			gx0 = x0,
+			gy0 = y0,
+			gx1 = x1,
+			gy1 = y1,
+			w = x1 - x0 + 1,
+			h = y1 - y0 + 1,
+			cx = math.floor((x0 + x1) / 2),
+			cy = math.floor((y0 + y1) / 2),
+		})
+	end
+	return self.rooms
+end
+
+---------------------------------------------------------------------------
+-- queries
+---------------------------------------------------------------------------
+
+function MazeGen:inBounds(gx, gy)
+	return gx &gt;= 1 and gy &gt;= 1 and gx &lt;= self.gridW and gy &lt;= self.gridH
+end
+
+--- Out of bounds counts as solid: the virtual border keeps everything inside.
+function MazeGen:isSolid(gx, gy)
+	if not self:inBounds(gx, gy) then
+		return true
+	end
+	return self.solid[gy][gx]
+end
+
+function MazeGen:walkable(gx, gy)
+	return self:inBounds(gx, gy) and not self.solid[gy][gx]
+end
+
+function MazeGen:setSolid(gx, gy, value)
+	if self:inBounds(gx, gy) then
+		self.solid[gy][gx] = not not value
+	end
+end
+
+--- Grid -&gt; world (Roblox X / Z) for a tile centre.
+function MazeGen:tileToWorld(gx, gy, tile)
+	return (gx - (self.gridW + 1) / 2) * tile, (gy - (self.gridH + 1) / 2) * tile
+end
+
+--- World (Roblox X / Z) -&gt; grid tile.
+function MazeGen:worldToTile(wx, wz, tile)
+	return math.floor(wx / tile + (self.gridW + 1) / 2 + 0.5),
+			math.floor(wz / tile + (self.gridH + 1) / 2 + 0.5)
+end
+
+--- Amanatides &amp; Woo voxel traversal between two world-space points expressed in
+--- tile units. Returns false as soon as a solid tile is entered.
+function MazeGen:lineOfSight(ax, ay, bx, by)
+	local startX, startY = math.floor(ax + 0.5), math.floor(ay + 0.5)
+	local endX, endY = math.floor(bx + 0.5), math.floor(by + 0.5)
+	if startX == endX and startY == endY then
+		return true
+	end
+
+	local dx, dy = bx - ax, by - ay
+	local stepX = dx &gt; 0 and 1 or (dx &lt; 0 and -1 or 0)
+	local stepY = dy &gt; 0 and 1 or (dy &lt; 0 and -1 or 0)
+	local dtx = dx ~= 0 and math.abs(1 / dx) or math.huge
+	local dty = dy ~= 0 and math.abs(1 / dy) or math.huge
+	-- Inputs are tile centres, so the first boundary is half a tile away.
+	local tMaxX, tMaxY = dtx * 0.5, dty * 0.5
+
+	local maxSteps = self.gridW + self.gridH + 8
+	for _ = 1, maxSteps do
+		if self:isSolid(startX, startY) then
+			return false
+		end
+		if startX == endX and startY == endY then
+			return true
+		end
+		if tMaxX &lt; tMaxY then
+			tMaxX = tMaxX + dtx
+			startX = startX + stepX
+		else
+			tMaxY = tMaxY + dty
+			startY = startY + stepY
+		end
+	end
+	return false
+end
+
+--- Breadth-first distance field from a target tile: every reachable tile learns how
+--- far it is from the target, so a chaser only has to step downhill. O(tiles).
+function MazeGen:flowField(tx, ty, blocked)
+	if not self:walkable(tx, ty) then
+		return nil
+	end
+
+	local dist = {}
+	for gy = 1, self.gridH do
+		dist[gy] = {}
+	end
+	dist[ty][tx] = 0
+
+	local queueX, queueY = { tx }, { ty }
+	local head = 1
+	local offsets = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
+
+	while head &lt;= #queueX do
+		local cx, cy = queueX[head], queueY[head]
+		head = head + 1
+		local base = dist[cy][cx]
+		for i = 1, 4 do
+			local nx, ny = cx + offsets[i][1], cy + offsets[i][2]
+			if self:walkable(nx, ny) and dist[ny][nx] == nil and not (blocked and blocked(nx, ny)) then
+				dist[ny][nx] = base + 1
+				table.insert(queueX, nx)
+				table.insert(queueY, ny)
+			end
+		end
+	end
+
+	return dist
+end
+
+--- One step downhill on a flow field. nil when already there or unreachable.
+function MazeGen:descend(dist, x, y)
+	if dist == nil or not dist[y] or dist[y][x] == nil then
+		return nil
+	end
+	local best = dist[y][x]
+	if best == 0 then
+		return nil
+	end
+	local offsets = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
+	local bx, by
+	for i = 1, 4 do
+		local nx, ny = x + offsets[i][1], y + offsets[i][2]
+		local d = dist[ny] and dist[ny][nx]
+		if d ~= nil and d &lt; best and (bx == nil or d &lt; dist[by][bx]) then
+			bx, by = nx, ny
+		end
+	end
+	if bx == nil then
+		return nil
+	end
+	return bx, by
+end
+
+--- Distance from a tile to the entry airlock, or nil. Convenience for placement.
+function MazeGen:distanceFromEntry()
+	return self:flowField(self.entryX, self.entryY)
+end
+
+--- Greedy meshing: collapse solid tiles into as few boxes as possible so the maze
+--- costs a couple hundred parts instead of a couple thousand.
+--- Returns { { gx, gy, w, h }, ... } in tiles.
+function MazeGen:solidRects()
+	local used = {}
+	for gy = 1, self.gridH do
+		used[gy] = {}
+	end
+
+	local rects = {}
+	for gy = 1, self.gridH do
+		for gx = 1, self.gridW do
+			if self.solid[gy][gx] and not used[gy][gx] then
+				local w = 1
+				while gx + w &lt;= self.gridW and self.solid[gy][gx + w] and not used[gy][gx + w] do
+					w = w + 1
+				end
+				local h = 1
+				local growing = true
+				while growing and gy + h &lt;= self.gridH do
+					for i = 0, w - 1 do
+						if not (self.solid[gy + h][gx + i] and not used[gy + h][gx + i]) then
+							growing = false
+							break
+						end
+					end
+					if growing then
+						h = h + 1
+					end
+				end
+				for yy = 0, h - 1 do
+					for xx = 0, w - 1 do
+						used[gy + yy][gx + xx] = true
+					end
+				end
+				table.insert(rects, { gx = gx, gy = gy, w = w, h = h })
+			end
+		end
+	end
+	return rects
+end
+
+--- Every open tile, shuffled. Handy for scattering props without repeats.
+function MazeGen:shuffledOpenTiles()
+	local out = {}
+	for gy = 1, self.gridH do
+		for gx = 1, self.gridW do
+			if not self.solid[gy][gx] then
+				table.insert(out, { gx, gy })
+			end
+		end
+	end
+	local rng = self.rng
+	for i = #out, 2, -1 do
+		local j = rng.int(i)
+		out[i], out[j] = out[j], out[i]
+	end
+	return out
+end
+
+function MazeGen:openCount()
+	local n = 0
+	for gy = 1, self.gridH do
+		for gx = 1, self.gridW do
+			if not self.solid[gy][gx] then
+				n = n + 1
+			end
+		end
+	end
+	return n
+end
+
+--- ASCII render, used by the test harness and by `tools/preview_maze.py`.
+function MazeGen:toString()
+	local lines = {}
+	for gy = 1, self.gridH do
+		local chars = {}
+		for gx = 1, self.gridW do
+			chars[gx] = self.solid[gy][gx] and "#" or "."
+		end
+		table.insert(lines, table.concat(chars))
+	end
+	return table.concat(lines, "\n")
+end
+
+return MazeGen
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">Remotes</string><ProtectedString name="Source">--[[
+	Remotes - one client-&gt;server action channel, one server-&gt;client event channel.
+
+	Everything else rides on instance attributes, which replicate for free and are
+	already throttled by the writers in Server/Attributes.lua. Keeping the remote
+	surface tiny makes the protocol easy to reason about when you extend the game.
+]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Remotes = {}
+
+local FOLDER_NAME = "BlacksiteNet"
+
+Remotes.Actions = {
+	Join = "join", -- ask to be added to the active round
+	Move = "move", -- sprint / crouch intent (the server turns this into WalkSpeed)
+	Flash = "flash", -- flashlight toggled (the Hollow reacts to your beam)
+	Spectate = "spectate", -- cycle spectator target
+	Restart = "restart", -- ready up again from the results screen
+	Debug = "debug", -- dev-only ping
+}
+
+Remotes.Events = {
+	Toast = "toast", -- HUD message
+	Hit = "hit", -- grabbed by the Hollow
+	Scare = "scare", -- jump scare sting
+	Phase = "phase", -- round phase changed
+	Fade = "fade", -- request a black fade
+	Reveal = "reveal", -- the Hollow just stepped into your light
+	Shake = "shake", -- camera kick
+	Sound = "sound", -- play a configured sound id at a position
+}
+
+--- Server only: build the remote folder.
+--- Both entry points hand back the same shape: a handle whose metatable carries the
+--- send helpers, so callers write remotes:toClient(...) anywhere.
+local function handle(action, event)
+	return setmetatable({ Action = action, Event = event }, { __index = Remotes })
+end
+
+function Remotes.ensure()
+	local shared = ReplicatedStorage:FindFirstChild(FOLDER_NAME)
+	if not shared then
+		shared = Instance.new("Folder")
+		shared.Name = FOLDER_NAME
+		shared.Parent = ReplicatedStorage
+	end
+
+	local function get(name)
+		local inst = shared:FindFirstChild(name)
+		if not inst then
+			inst = Instance.new("RemoteEvent")
+			inst.Name = name
+			inst.Parent = shared
+		end
+		return inst
+	end
+
+	return handle(get("Action"), get("Event"))
+end
+
+--- Client (and server) side: fetch the already-created remotes.
+function Remotes.get()
+	local shared = ReplicatedStorage:WaitForChild(FOLDER_NAME, 30)
+	if not shared then
+		return nil
+	end
+	return handle(shared:WaitForChild("Action", 30), shared:WaitForChild("Event", 30))
+end
+
+--- Fire an action at the server. Tolerates a missing remote (solo Studio testing).
+function Remotes.fire(self, action, ...)
+	if self.Action then
+		self.Action:FireServer(action, ...)
+	end
+end
+
+--- Fire an event at one client from the server.
+function Remotes.toClient(self, player, event, ...)
+	if self.Event then
+		self.Event:FireClient(player, event, ...)
+	end
+end
+
+function Remotes.toAll(self, event, ...)
+	if self.Event then
+		self.Event:FireAllClients(event, ...)
+	end
+end
+
+return Remotes
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX5"><Properties><string name="Name">Util</string><ProtectedString name="Source">--[[
+	Util - small shared helpers.
+
+	Safe to require from both sides. Anything touching the DataModel is guarded so
+	these stay usable in plain Lua too (the maze test harness imports nothing from
+	here, but designers often do).
+]]
+
+local Util = {}
+
+function Util.clamp(v, lo, hi)
+	if v &lt; lo then
+		return lo
+	end
+	if v &gt; hi then
+		return hi
+	end
+	return v
+end
+
+function Util.lerp(a, b, t)
+	return a + (b - a) * t
+end
+
+--- Frame-rate independent exponential smoothing. `halfLife` is how long an error
+--- takes to shrink to half, in seconds.
+function Util.damp(current, target, halfLife, dt)
+	if halfLife &lt;= 0 then
+		return target
+	end
+	return Util.lerp(current, target, 1 - 0.5 ^ (dt / halfLife))
+end
+
+function Util.round(v, step)
+	if step and step &gt; 0 then
+		return math.floor(v / step + 0.5) * step
+	end
+	return math.floor(v + 0.5)
+end
+
+--- mm:ss, used all over the HUD.
+function Util.formatTime(seconds)
+	seconds = math.max(0, math.floor(seconds + 0.5))
+	return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
+--- 128 studs -&gt; "26 m" so the compass reads like a facility, not a baseplate.
+function Util.studsToMeters(studs)
+	return math.floor(studs * 0.2 + 0.5)
+end
+
+function Util.percent(v)
+	return math.floor(Util.clamp(v, 0, 100) + 0.5) .. "%"
+end
+
+--- Random element without disturbing a caller's math.random sequence.
+function Util.pick(list, rng)
+	if #list == 0 then
+		return nil
+	end
+	if rng then
+		return list[rng.int(#list)]
+	end
+	return list[math.random(#list)]
+end
+
+function Util.shuffle(list, rng)
+	for i = #list, 2, -1 do
+		local j = (rng and rng.int(i)) or math.random(i)
+		list[i], list[j] = list[j], list[i]
+	end
+	return list
+end
+
+--- Squared planar distance (no Y), used constantly by the AI.
+function Util.dist2D(a, b)
+	local dx, dz
+	if typeof and typeof(a) == "Vector3" then
+		dx, dz = a.X - b.X, a.Z - b.Z
+	else
+		dx, dz = a[1] - b[1], a[2] - b[2]
+	end
+	return dx * dx + dz * dz
+end
+
+function Util.safeParent(instance, parent)
+	if parent then
+		instance.Parent = parent
+	end
+	return instance
+end
+
+--- Instance.new with a property table, the one syntax worth keeping around.
+function Util.new(className, props)
+	local inst = Instance.new(className)
+	if props then
+		for key, value in pairs(props) do
+			if key ~= "Parent" then
+				inst[key] = value
+			end
+		end
+		if props.Parent then
+			inst.Parent = props.Parent
+		end
+	end
+	return inst
+end
+
+--- Deep-ish copy for config tables handed to builders.
+function Util.shallowCopy(src)
+	local out = {}
+	for k, v in pairs(src) do
+		out[k] = v
+	end
+	return out
+end
+
+return Util
+</ProtectedString></Properties></Item></Item><Item class="ServerScriptService" referent="RBX11"><Properties></Properties><Item class="ModuleScript" referent="RBX7"><Properties><string name="Name">Entity</string><ProtectedString name="Source">--[[
+	Entity - "the Hollow".
+
+	A stalking AI with an explicit state machine and grid-accurate pathing. No
+	PathfindingService and no baked navmesh: the maze is generated by us, so a BFS
+	flow field is exact, costs about half a millisecond (measured in
+	tools/test_maze.py), and cannot desync from the geometry.
+
+	States
+		dormant     never moves. Used for the round intro beat.
+		patrol      drifts toward a deep tile, so the map is never safe.
+		investigate walked to a noise, looks around, gives up.
+		hunt        has you. Chases, with memory of the last confirmed position.
+		feeding     mid-grab; deaf to everything else for a moment.
+
+	Detection is generous about sound and strict about sight, which teaches the two
+	rules the whole game runs on: move quietly, and never shine your beam at it.
+]]
+
+--[[ Shared modules live in ReplicatedStorage.Blacksite. Addressed through the service rather
+     than script.Parent.Parent, because these folders are siblings, not ancestors. ]]
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("Blacksite")
+local Config = require(shared:WaitForChild("Config"))
+local Util = require(shared:WaitForChild("Util"))
+
+local Entity = {}
+Entity.__index = Entity
+
+local cfg = Config.Entity
+local COS_HALF_FOV = math.cos(math.rad(cfg.FaceAngle / 2))
+local DecisionRate = 1 / 20 -- perception + routing; motion runs every Heartbeat
+
+---------------------------------------------------------------------------
+-- body
+---------------------------------------------------------------------------
+
+local BODY = {
+	{ name = "Torso", size = Vector3.new(3.0, 5.4, 2.0), pos = Vector3.new(0, 5.6, 0) },
+	{ name = "Head", size = Vector3.new(2.5, 2.7, 2.3), pos = Vector3.new(0, 9.5, 0), ball = true },
+	{ name = "ArmL", size = Vector3.new(1.0, 4.4, 1.0), pos = Vector3.new(2.15, 6.2, 0), tilt = 6 },
+	{ name = "ArmR", size = Vector3.new(1.0, 4.4, 1.0), pos = Vector3.new(-2.15, 6.2, 0), tilt = -6 },
+	{ name = "HandL", size = Vector3.new(0.8, 2.8, 0.8), pos = Vector3.new(2.6, 3.0, 0), tilt = 11 },
+	{ name = "HandR", size = Vector3.new(0.8, 2.8, 0.8), pos = Vector3.new(-2.6, 3.0, 0), tilt = -11 },
+	{ name = "LegL", size = Vector3.new(1.15, 5.0, 1.15), pos = Vector3.new(0.95, 2.5, 0) },
+	{ name = "LegR", size = Vector3.new(1.15, 5.0, 1.15), pos = Vector3.new(-0.95, 2.5, 0) },
+	{ name = "Hip", size = Vector3.new(2.6, 1.2, 1.8), pos = Vector3.new(0, 2.9, 0) },
+}
+
+local GLOW = {
+	{ name = "EyeL", size = Vector3.new(0.55, 0.55, 0.42), pos = Vector3.new(0.62, 9.95, -1.12), ball = true },
+	{ name = "EyeR", size = Vector3.new(0.55, 0.55, 0.42), pos = Vector3.new(-0.62, 9.95, -1.12), ball = true },
+	{ name = "Maw", size = Vector3.new(1.0, 0.22, 0.25), pos = Vector3.new(0, 8.75, -1.14) },
+}
+
+local function limb(spec, parent, material, color, transparency)
+	local part = Instance.new("Part")
+	part.Name = spec.name
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Massless = true
+	part.Size = spec.size
+	part.CFrame = CFrame.new(spec.pos)
+	if spec.tilt then
+		part.CFrame = part.CFrame * CFrame.Angles(0, 0, math.rad(spec.tilt))
+	end
+	part.Material = material
+	part.Color = color
+	part.Transparency = transparency
+	part.CastShadow = true
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	if spec.ball then
+		part.Shape = Enum.PartType.Ball
+	end
+	part.Parent = parent
+	return part
+end
+
+function Entity:buildModel()
+	local model = Instance.new("Model")
+	model.Name = "TheHollow"
+
+	self.parts = {}
+	for _, spec in ipairs(BODY) do
+		local part = limb(spec, model, Enum.Material.Fabric, cfg.BodyColor, cfg.FadeTransparency)
+		self.parts[#self.parts + 1] = part
+	end
+
+	self.head = self.parts[2]
+
+	self.glowParts = {}
+	for _, spec in ipairs(GLOW) do
+		local part = limb(spec, model, Enum.Material.Neon, cfg.EyeColor, 0.12)
+		part.CastShadow = false
+		self.glowParts[#self.glowParts + 1] = part
+	end
+
+	self.eyeLight = Instance.new("PointLight")
+	self.eyeLight.Range = 21
+	self.eyeLight.Brightness = 0.65
+	self.eyeLight.Color = cfg.EyeColor
+	self.eyeLight.Shadows = false
+	self.eyeLight.Parent = self.head
+
+	self.highlight = Instance.new("Highlight")
+	self.highlight.Name = "Reveal"
+	self.highlight.Adornee = model
+	self.highlight.FillTransparency = 1
+	self.highlight.OutlineTransparency = 1
+	self.highlight.FillColor = Color3.fromRGB(158, 250, 236)
+	self.highlight.OutlineColor = Color3.fromRGB(196, 62, 52)
+	self.highlight.Parent = model
+
+	model.PrimaryPart = self.parts[1]
+	return model
+end
+
+--- deps = { round, level, root }
+function Entity.new(deps)
+	local self = setmetatable({}, Entity)
+	self.round = deps.round
+	self.level = deps.level
+	self.maze = deps.level.maze
+	self.tile = deps.level.tile
+	self.parts = {}
+	self.model = self:buildModel()
+	self.model.Parent = deps.root
+
+	self.state = "dormant"
+	self.closestDist = math.huge
+	self.target = nil
+	self.pos = Vector3.new(0, 0, 0)
+	self.tx, self.ty = deps.level.maze.entryX, deps.level.maze.entryY
+	self.dir = Vector3.new(0, 0, -1)
+	self.speed = 0
+	self.time = 0
+	self.walkPhase = 0
+	self.targetPlayer = nil
+	self.lastSeen = -1000
+	self.lastKnown = nil
+	self.investigateTile = nil
+	self.investigateUntil = 0
+	self.nextAttack = 0
+	self.repathIn = 0
+	self.field = nil
+	self.fieldKey = nil
+	self.nextTile = nil
+	self.patrolTile = nil
+	self.feedingUntil = 0
+	self.revealedUntil = 0
+	self.idleTime = 0
+	self.aggro = 0
+	self.revealed = false
+
+	self.model:SetAttribute("State", self.state)
+	self.model:SetAttribute("Revealed", false)
+	return self
+end
+
+function Entity:destroy()
+	if self.model then
+		self.model:Destroy()
+		self.model = nil
+	end
+	self.field = nil
+	self.parts = {}
+end
+
+---------------------------------------------------------------------------
+-- geometry
+---------------------------------------------------------------------------
+
+function Entity:tileCenter(gx, gy)
+	local x, z = self.maze:tileToWorld(gx, gy, self.tile)
+	return Vector3.new(x, 0, z)
+end
+
+function Entity:setPositionFromTile(gx, gy)
+	self.tx, self.ty = gx, gy
+	self.pos = self:tileCenter(gx, gy)
+	self.nextTile = nil
+	self.field = nil
+	self.repathIn = 0
+	self:applyCFrame(0)
+end
+
+--- Yaw that points the model's front (-Z) along self.dir.
+function Entity:yaw()
+	local d = self.dir
+	if d.X == 0 and d.Z == 0 then
+		return 0
+	end
+	return math.atan2(d.X, d.Z) + math.pi
+end
+
+function Entity:applyCFrame(bob)
+	local model = self.model
+	if not model or not model.PrimaryPart or not model.Parent then
+		return
+	end
+	local lean = 0
+	if self.state == "hunt" then
+		lean = 8
+	elseif self.state == "feeding" then
+		lean = 14
+	elseif self.state == "investigate" then
+		lean = 3
+	end
+	local cf = CFrame.new(self.pos + Vector3.new(0, 3.4 + (bob or 0), 0))
+		* CFrame.Angles(0, self:yaw(), 0)
+		* CFrame.Angles(math.rad(lean * 0.35), 0, math.rad(lean * 0.12))
+	model:PivotTo(cf)
+end
+
+--- A walkable cell tile at least `minTiles` (Chebyshev) from every live player.
+function Entity:pickFarTile(minTiles, avoidTile)
+	local tiles = {}
+	local maze = self.maze
+	for gy = 1, maze.gridH, 2 do
+		for gx = 1, maze.gridW, 2 do
+			tiles[#tiles + 1] = { gx, gy }
+		end
+	end
+	if #tiles == 0 then
+		return maze.entryX, maze.entryY
+	end
+
+	local best, bestScore
+	for _ = 1, 80 do
+		local cand = tiles[math.random(#tiles)]
+		local gx, gy = cand[1], cand[2]
+		local minDist = math.huge
+		local valid = true
+
+		if avoidTile then
+			if math.max(math.abs(avoidTile[1] - gx), math.abs(avoidTile[2] - gy)) &lt; 8 then
+				valid = false
+			end
+		end
+
+		if valid then
+			for _, st in self.round:eachPlayer() do
+				if st.joined and st.alive and not st.escaped then
+					local d = math.max(math.abs(st.tx - gx), math.abs(st.ty - gy))
+					if d &lt; minTiles then
+						valid = false
+						break
+					end
+					if d &lt; minDist then
+						minDist = d
+					end
+				end
+			end
+		end
+
+		if valid and (bestScore == nil or minDist &gt; bestScore) then
+			best, bestScore = cand, minDist
+		end
+	end
+
+	if best then
+		return best[1], best[2]
+	end
+	local fallback = tiles[math.random(#tiles)]
+	return fallback[1], fallback[2]
+end
+
+--- Snap onto the grid when a tile is entered. Keeps the AI's tile bookkeeping exact
+--  (it is the same grid the player's position is read from) with no visible hitch.
+function Entity:snapToTile(gx, gy)
+	self.tx, self.ty = gx, gy
+	self.pos = self:tileCenter(gx, gy)
+end
+
+---------------------------------------------------------------------------
+-- perception
+---------------------------------------------------------------------------
+
+--- One pass over the live players: fills st.dist, st.seen, st.dread.
+function Entity:scan()
+	local now = self.time
+	local radius = cfg.SightRange
+	local best, bestScore
+	self.closestDist = math.huge
+
+	for player, st in self.round:eachPlayer() do
+		st.seen = false
+		st.dist = nil
+		if st.joined and st.alive and not st.escaped and st.character and st.character.Parent then
+			local to = st.pos - self.pos
+			local flat = Vector3.new(to.X, 0, to.Z)
+			local dist = flat.Magnitude
+			st.dist = dist
+			if dist &lt; self.closestDist then
+				self.closestDist = dist
+			end
+
+			local throughWall = dist &lt; cfg.CloseSenseRange
+			local clear = throughWall or self.maze:lineOfSight(self.tx, self.ty, st.tx, st.ty)
+
+			if st.hiddenLock then
+				-- Only a Hollow that is already hunting you, standing at the door,
+				-- can pull you out. Otherwise you are simply not there.
+				if self.state == "hunt" and self.targetPlayer == player and dist &lt; cfg.KickRange then
+					st.atDoor = true
+				else
+					st.atDoor = false
+				end
+			elseif clear then
+				local facing = throughWall
+				if not facing and dist &gt; 0.01 then
+					facing = self.dir:Dot(flat.Unit) &gt; COS_HALF_FOV
+				end
+				-- Your beam is a searchlight. Catching sight of it means it sees you.
+				local beamed = false
+				if st.flashOn and st.look and dist &lt; 120 and dist &gt; 0.01 then
+					beamed = st.look:Dot(-flat.Unit) &gt; 0.9
+				end
+				if facing or beamed then
+					st.seen = true
+					st.atDoor = false
+					if beamed then
+						self.revealedUntil = now + cfg.RevealHold
+						self.round:revealFlash(player)
+					end
+					local score = 1 - dist / radius + (beamed and 0.35 or 0)
+					if score &gt; (bestScore or -1) then
+						best, bestScore = player, score
+					end
+				end
+			else
+				st.atDoor = false
+			end
+		end
+	end
+
+	return best
+end
+
+--- The single 0..1 number that drives the client's vignette, blur and shake.
+function Entity:computeDread()
+	local dreadBase = 0
+	local closest = self.closestDist or math.huge
+	if closest &lt; math.huge then
+		dreadBase = 1 - Util.clamp(closest / Config.Dread.Radius, 0, 1)
+	end
+	local stateWeight
+	if self.state == "hunt" or self.state == "feeding" then
+		stateWeight = Config.Dread.HuntMult
+	elseif self.state == "investigate" then
+		stateWeight = Config.Dread.InvestigateMult
+	elseif self.state == "patrol" then
+		stateWeight = Config.Dread.PatrolMult
+	else
+		stateWeight = 0.1
+	end
+
+	for player, st in self.round:eachPlayer() do
+		local personal = 0
+		if st.dist then
+			personal = 1 - Util.clamp(st.dist / Config.Dread.Radius, 0, 1)
+		end
+		local dread = Util.clamp(personal * Config.Dread.ProximityFalloff + personal * 0.45 * stateWeight, 0, 1)
+		if st.hiddenLock then
+			dread = Util.clamp(dread + 0.3, 0, 1)
+		end
+		if self.state == "hunt" and self.targetPlayer == player then
+			dread = 1
+		end
+		st.dread = dread
+	end
+end
+
+function Entity:setState(nextState)
+	if self.state == nextState then
+		return
+	end
+	self.state = nextState
+	if self.model then
+		self.model:SetAttribute("State", nextState)
+	end
+end
+
+--- A noise happened at `pos`. Loud enough and it is worth walking over to.
+function Entity:hear(pos, radius)
+	if self.state == "dormant" or self.state == "feeding" then
+		return
+	end
+	if (pos - self.pos).Magnitude &gt; radius then
+		return
+	end
+
+	local gx, gy = self.level:tileOf(pos)
+	gx, gy = self.round:nearestWalkable(self.maze, gx, gy)
+	self.investigateTile = { gx, gy }
+	self.investigateUntil = self.time + cfg.InvestigateTime
+	if self.state ~= "hunt" then
+		self:setState("investigate")
+		self.field = nil
+		self.nextTile = nil
+		self.repathIn = 0
+	end
+end
+
+---------------------------------------------------------------------------
+-- brain
+---------------------------------------------------------------------------
+
+--- Called at DecisionRate: perception, state machine, routing.
+function Entity:tick(dt)
+	self.time = self.time + dt
+	local now = self.time
+
+	self:computeDread()
+
+	if self.state == "dormant" then
+		self:updateReveal(now)
+		return
+	end
+
+	if self.state == "feeding" then
+		if now &gt;= self.feedingUntil then
+			self:setState("patrol")
+			self.targetPlayer = nil
+			self.lastKnown = nil
+			self.patrolTile = nil
+		end
+		self:updateReveal(now)
+		return
+	end
+
+	local target = self:scan()
+
+	if target then
+		if self.targetPlayer ~= target then
+			self:setState("hunt")
+		end
+		self.targetPlayer = target
+		self.lastSeen = now
+		local st = self.round.players[target]
+		if st then
+			self.lastKnown = { st.tx, st.ty }
+		end
+		self.investigateTile = nil
+	elseif self.state == "hunt" then
+		if now - self.lastSeen &gt; cfg.SightMemory then
+			self:setState("investigate")
+			self.investigateUntil = now + cfg.InvestigateTime
+			self.investigateTile = self.lastKnown
+		end
+	elseif self.state == "investigate" then
+		if now &gt; self.investigateUntil then
+			self:setState("patrol")
+			self.patrolTile = nil
+		end
+	end
+
+	self:repositionIfStuck(dt, target)
+	self:plan()
+	self:attackCheck(now)
+	self:updateReveal(now)
+end
+
+--- Rebuild the flow field at most once per RepathInterval, never per frame.
+function Entity:plan()
+	local goal = self:goalTile()
+	self.goal = goal
+
+	if goal == nil then
+		self.field = nil
+		self.fieldKey = nil
+		self.nextTile = nil
+		return
+	end
+
+	local key = goal[1] .. "_" .. goal[2]
+	self.repathIn = self.repathIn - DecisionRate
+
+	if self.field == nil or self.fieldKey ~= key or self.repathIn &lt;= 0 then
+		self.field = self.maze:flowField(goal[1], goal[2])
+		self.fieldKey = key
+		self.repathIn = cfg.RepathInterval
+
+		if self.field == nil or self.field[self.ty] == nil or self.field[self.ty][self.tx] == nil then
+			-- Unreachable: stop shuffling at a wall, go and look instead.
+			if self.state == "hunt" then
+				self:setState("investigate")
+				self.investigateUntil = self.time + cfg.InvestigateTime
+			end
+			self.field = nil
+			self.nextTile = nil
+			return
+		end
+
+		self.nextTile = self:stepFrom(self.tx, self.ty)
+	end
+end
+
+--- Called every Heartbeat so the body glides instead of stepping tile to tile.
+function Entity:advance(dt)
+	if not self.model or not self.model.PrimaryPart then
+		return
+	end
+
+	if self.state == "dormant" or self.state == "feeding" then
+		self.speed = 0
+		self:applyCFrame(math.sin(self.time * 0.9) * 0.06)
+		return
+	end
+
+	if self.field == nil or self.nextTile == nil then
+		self.speed = Util.lerp(self.speed, 0, 0.35)
+		self:applyCFrame(math.sin(self.time * 2.2) * 0.07)
+		self:keepInside()
+		return
+	end
+
+	self:stepTowards(self.nextTile, dt)
+	self:keepInside()
+end
+
+--- Hunting without a route for a while is the worst outcome for tension, so it
+--- relocates rather than pacing a corner forever.
+function Entity:repositionIfStuck(dt, target)
+	if self.state == "hunt" and not target and self.targetPlayer then
+		local st = self.round.players[self.targetPlayer]
+		if st and st.hiddenLock then
+			self.idleTime = 0
+			return
+		end
+		self.idleTime = self.idleTime + dt
+		if self.idleTime &gt; cfg.TeleportCooldown then
+			self.idleTime = 0
+			self:reposition(16)
+		end
+	else
+		self.idleTime = 0
+	end
+end
+
+function Entity:currentSpeed()
+	return (cfg.Speeds[self.state] or cfg.Speeds.patrol) + self.aggro
+end
+
+--- Where it wants to be, as a grid tile.
+function Entity:goalTile()
+	if self.state == "hunt" then
+		if self.targetPlayer then
+			local st = self.round.players[self.targetPlayer]
+			if st and st.seen and not st.hiddenLock then
+				return { st.tx, st.ty }
+			end
+		end
+		return self.lastKnown
+	elseif self.state == "investigate" then
+		if self.investigateTile then
+			return self.investigateTile
+		end
+		return self.lastKnown
+	end
+
+	local tile = self.patrolTile
+	if tile == nil or (self.tx == tile[1] and self.ty == tile[2]) then
+		local gx, gy
+		if self.round.gateOpen and math.random() &lt; 0.6 then
+			-- the airlock is the only way out, and it knows that
+			gx, gy = self.maze.entryX + 1, self.maze.entryY
+		else
+			gx, gy = self:pickFarTile(cfg.PatrolPickRadius, { self.tx, self.ty })
+		end
+		self.patrolTile = { gx, gy }
+		tile = self.patrolTile
+	end
+	return tile
+end
+
+--- Next tile downhill, plus a tile of corner-cutting where the geometry allows it.
+function Entity:stepFrom(fromX, fromY)
+	local maze, field = self.maze, self.field
+	local nx, ny = maze:descend(field, fromX, fromY)
+	if nx == nil then
+		return nil
+	end
+
+	local lx, ly = maze:descend(field, nx, ny)
+	if lx then
+		local target = self:tileCenter(lx, ly)
+		local flatX, flatZ = target.X - self.pos.X, target.Z - self.pos.Z
+		local length = math.sqrt(flatX * flatX + flatZ * flatZ)
+		local samples = math.max(2, math.floor(length / (self.tile * 0.45)))
+		local clear = true
+		for i = 1, samples do
+			local t = i / samples
+			local tgx, tgy = maze:worldToTile(self.pos.X + flatX * t, self.pos.Z + flatZ * t, self.tile)
+			if maze:isSolid(tgx, tgy) then
+				clear = false
+				break
+			end
+		end
+		if clear then
+			return { lx, ly }
+		end
+	end
+	return { nx, ny }
+end
+
+function Entity:stepTowards(tile, dt)
+	local goal = self:tileCenter(tile[1], tile[2])
+	local toX, toZ = goal.X - self.pos.X, goal.Z - self.pos.Z
+	local dist = math.sqrt(toX * toX + toZ * toZ)
+
+	if dist &gt; 0.001 then
+		self.dir = Vector3.new(toX, 0, toZ).Unit
+	end
+
+	local speed = self:currentSpeed()
+	self.speed = speed
+	local step = math.min(speed * dt, dist)
+	self.pos = self.pos + self.dir * step
+	self.walkPhase = self.walkPhase + dt * (speed * 0.42 + 1.4)
+
+	if dist - step &lt;= 0.55 then
+		-- Snap on arrival: the AI's tile bookkeeping stays exact, and half a stud of
+		-- correction is invisible at these speeds.
+		self:snapToTile(tile[1], tile[2])
+		self.nextTile = self:stepFrom(self.tx, self.ty)
+		self.repathIn = math.max(self.repathIn, 0.06)
+		if self.nextTile == nil then
+			self.field = nil
+			self.fieldKey = nil
+		end
+	end
+
+	local bob
+	if self.state == "hunt" then
+		bob = math.sin(self.walkPhase * 1.9) * 0.42
+	else
+		bob = math.sin(self.walkPhase * 0.55) * 0.1
+	end
+	self:applyCFrame(bob)
+end
+
+function Entity:attackCheck(now)
+	if now &lt; self.nextAttack then
+		return
+	end
+	for player, st in self.round:eachPlayer() do
+		if st.joined and st.alive and not st.escaped and not st.hiddenLock and st.character and st.dist then
+			if st.dist &lt; cfg.ContactRange then
+				self.nextAttack = now + cfg.AttackCooldown
+				self.round:grab(player, st, self)
+				return
+			end
+		end
+	end
+end
+
+--- Being lit up costs you something: it turns solid *and* angry.
+function Entity:updateReveal(now)
+	local revealed = now &lt; self.revealedUntil
+	if revealed == self.revealed then
+		return
+	end
+	self.revealed = revealed
+	local transparency = revealed and cfg.RevealTransparency or cfg.FadeTransparency
+	for _, part in ipairs(self.parts) do
+		part.Transparency = transparency
+	end
+	for _, part in ipairs(self.glowParts) do
+		part.Transparency = revealed and 0 or 0.12
+	end
+	self.eyeLight.Brightness = revealed and 1.5 or 0.65
+	if self.model then
+		self.model:SetAttribute("Revealed", revealed)
+		self.model:SetAttribute("Alpha", transparency)
+	end
+end
+
+--- It must never leave the playable grid, or a player could outrun it onto the dock.
+function Entity:keepInside()
+	local level = self.level
+	local limitX = level.halfW - self.tile / 2
+	local limitZ = level.halfH - self.tile / 2
+	local x, z = self.pos.X, self.pos.Z
+	local moved = false
+
+	if x &lt; -limitX then
+		x, moved = -limitX, true
+	elseif x &gt; limitX then
+		x, moved = limitX, true
+	end
+	if z &lt; -limitZ then
+		z, moved = -limitZ, true
+	elseif z &gt; limitZ then
+		z, moved = limitZ, true
+	end
+
+	if moved then
+		self.pos = Vector3.new(x, 0, z)
+		local gx, gy = self.level:tileOf(self.pos)
+		if self.maze:walkable(gx, gy) then
+			self.tx, self.ty = gx, gy
+		end
+		self.field = nil
+		self.nextTile = nil
+		self.repathIn = 0
+	end
+end
+
+--- Blink into a distant corridor: punishment for it standing around uselessly, and
+--- the round-start beat that keeps it out of the players' face.
+function Entity:reposition(minTiles)
+	local gx, gy = self:pickFarTile(minTiles or 14, { self.tx, self.ty })
+	self:setPositionFromTile(gx, gy)
+	self.patrolTile = { gx, gy }
+	self.goal = { gx, gy }
+	self.round:scare(1.2, "blink")
+end
+
+function Entity:beginFeed()
+	self:setState("feeding")
+	self.feedingUntil = self.time + 1.7
+	self.targetPlayer = nil
+	self.lastKnown = nil
+	self.investigateTile = nil
+	self.field = nil
+	self.fieldKey = nil
+	self.nextTile = nil
+	self.speed = 0
+end
+
+--- Settle back down once the round's dirty business is over.
+function Entity:settle()
+	self:setState("patrol")
+	self.feedingUntil = 0
+	self.nextAttack = 0
+	self.idleTime = 0
+	self.aggro = 0
+end
+
+--- The gate is open. Stop letting the team stroll up to it.
+function Entity:enroll()
+	self:setState("investigate")
+	self.investigateTile = { self.maze.entryX + 1, self.maze.entryY }
+	self.investigateUntil = self.time + 30
+	self.aggro = self.aggro + 1.6
+	self.patrolTile = nil
+	self.field = nil
+	self.fieldKey = nil
+	self.nextTile = nil
+end
+
+return Entity
+</ProtectedString></Properties></Item><Item class="Script" referent="RBX8"><Properties><string name="Name">Init</string><ProtectedString name="Source">--[[
+	Blacksite - server entry point.
+
+	Thin on purpose: services, world setup, the remote door, and one Heartbeat beat
+	that drives the round director. All gameplay decisions live in Round.lua.
+]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
+local Workspace = game:GetService("Workspace")
+
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("Blacksite")
+local Config = require(shared:WaitForChild("Config"))
+local Remotes = require(shared:WaitForChild("Remotes"))
+
+local container = script.Parent
+local MapBuilder = require(container:WaitForChild("MapBuilder"))
+local Round = require(container:WaitForChild("Round"))
+
+---------------------------------------------------------------------------
+-- world setup
+--
+-- Everything here is set from code instead of saved into the place file, so the
+-- .rbxlx stays a thin container for scripts and can be regenerated at any time.
+---------------------------------------------------------------------------
+
+local function setupAtmosphere()
+	local fx = Config.Effects
+	Lighting.Ambient = fx.Ambient
+	Lighting.OutdoorAmbient = Color3.fromRGB(0, 0, 0)
+	Lighting.Brightness = 0
+	Lighting.ClockTime = 0
+	Lighting.FogColor = fx.FogColor
+	Lighting.FogStart = fx.FogStart
+	Lighting.FogEnd = fx.FogEnd
+	Lighting.GlobalShadows = true
+	Lighting.EnvironmentDiffuseScale = 0
+	Lighting.EnvironmentSpecularScale = 0
+
+	-- Future technology is what makes the flashlight's shadows and per-pixel
+	-- lighting work; Legacy would flatten the whole beam mechanic into a foggy mush.
+	pcall(function()
+		Lighting.Technology = Enum.Technology.Future
+	end)
+	pcall(function()
+		Lighting.ShadowSoftness = 0.45
+	end)
+	pcall(function()
+		local air = Lighting:FindFirstChild("BlacksiteAir") or Instance.new("Atmosphere")
+		air.Name = "BlacksiteAir"
+		air.Density = 0.3
+		air.Offset = Vector3.new(0, -2, 0)
+		air.Color = Color3.fromRGB(24, 26, 30)
+		air.Decay = Color3.fromRGB(12, 12, 14)
+		air.Glare = 0
+		air.Haze = 1.2
+		air.Parent = Lighting
+	end)
+end
+
+local function setupWorkspace()
+	Workspace.StreamingEnabled = false
+
+	local root = Workspace:FindFirstChild("BlacksiteRoot")
+	if not root then
+		root = Instance.new("Folder")
+		root.Name = "BlacksiteRoot"
+		root.Parent = Workspace
+	end
+
+	-- A valid spawn is required before the first round moves anyone anywhere.
+	if not Workspace:FindFirstChildOfClass("SpawnLocation") then
+		local spawn = Instance.new("SpawnLocation")
+		spawn.Name = "BlacksiteSpawn"
+		spawn.Anchored = true
+		spawn.Size = Vector3.new(24, 1, 24)
+		spawn.Neutral = true
+		spawn.Duration = 0
+		spawn.Transparency = 1
+		spawn.CanCollide = false
+		spawn.Parent = Workspace
+	end
+
+	return root
+end
+
+local root = setupWorkspace()
+setupAtmosphere()
+
+local remotes = Remotes.ensure()
+local lobby = MapBuilder.buildLobby(root, { y = -120 })
+
+local spawnLocation = Workspace:FindFirstChild("BlacksiteSpawn")
+if spawnLocation then
+	spawnLocation.Position = Vector3.new(0, lobby.y - 1, 0)
+end
+
+-- The round loop owns respawning: lives, airlock redeploy, elimination.
+Players.CharacterAutoLoads = false
+
+local round = Round.new({
+	root = root,
+	remotes = remotes,
+	lobby = lobby,
+})
+
+root:SetAttribute("Version", Config.Meta.Version)
+root:SetAttribute("Title", Config.Meta.Title)
+root:SetAttribute("Studio", RunService:IsStudio())
+
+---------------------------------------------------------------------------
+-- players
+---------------------------------------------------------------------------
+
+Players.PlayerAdded:Connect(function(player)
+	round:attach(player)
+
+	-- Anyone arriving mid-round waits in staging like the rest of the crew.
+	if round.phase ~= "intermission" then
+		task.defer(function()
+			local st = round.players[player]
+			if st and not st.joined then
+				round:placeCharacter(player, st, true)
+			end
+		end)
+	end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	round:detach(player)
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+	round:attach(player)
+end
+
+---------------------------------------------------------------------------
+-- the remote door
+---------------------------------------------------------------------------
+
+-- Server-side only rate limit. Kept off the Player instance on purpose: an attribute
+-- used as a throttle would replicate to every client 20 times a second.
+local actionStamp = {}
+
+remotes.Action.OnServerEvent:Connect(function(player, action, arg, arg2)
+	if typeof(action) ~= "string" then
+		return
+	end
+	local now = tick()
+	-- Default far in the past: with `or 0` the very first action of a session - the
+	-- one that asks for the lift - would be swallowed by the throttle.
+	local last = actionStamp[player] or -1e9
+	if now - last &lt; 0.05 then
+		return
+	end
+	actionStamp[player] = now
+	round:action(player, action, arg, arg2)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	actionStamp[player] = nil
+end)
+
+---------------------------------------------------------------------------
+-- the beat
+---------------------------------------------------------------------------
+
+RunService.Heartbeat:Connect(function(dt)
+	round:update(dt)
+end)
+
+game:BindToClose(function()
+	if RunService:IsStudio() then
+		task.wait(0.2)
+	end
+end)
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX9"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source">--[[
+	MapBuilder - procedurally builds the facility out of primitives.
+
+	Everything is authored at runtime from the maze grid, which is what makes every
+	round a different floorplan without anyone hand-placing a part. It also keeps the
+	shipped place file tiny: the .rbxlx holds scripts, not geometry.
+
+	Three rules keep this cheap and safe:
+	  * walls are greedy-merged boxes, so a 41x41 grid costs ~250 parts, not ~750
+	  * decorative clutter never collides, so it can never trap a player
+	  * gameplay props only ever live on grid tiles, so the AI's tile maths stay exact
+]]
+
+local TweenService = game:GetService("TweenService")
+
+--[[ Shared modules live in ReplicatedStorage.Blacksite. Addressed through the service rather
+     than script.Parent.Parent, because these folders are siblings, not ancestors. ]]
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("Blacksite")
+local Config = require(shared:WaitForChild("Config"))
+local MazeGen = require(shared:WaitForChild("MazeGen"))
+
+local MapBuilder = {}
+MapBuilder.__index = MapBuilder
+
+local noise = math.noise or function()
+	return 0
+end
+
+local CLOSED_PAD = Color3.fromRGB(74, 22, 22)
+local OPEN_PAD = Color3.fromRGB(74, 226, 158)
+
+---------------------------------------------------------------------------
+-- primitive helpers
+---------------------------------------------------------------------------
+
+--- Axis-aligned box from two corners. The only geometry primitive needed here.
+local function box(parent, a, b, opts)
+	opts = opts or {}
+	local size = b - a
+	local part = Instance.new("Part")
+	part.Anchored = true
+	part.Size = Vector3.new(math.abs(size.X), math.abs(size.Y), math.abs(size.Z))
+	part.CFrame = CFrame.new((a + b) / 2)
+	part.Name = opts.Name or "Box"
+	part.Material = opts.Material or Enum.Material.Concrete
+	part.Color = opts.Color or Config.World.WallPalette[1]
+	part.CanCollide = opts.CanCollide ~= false
+	part.CanQuery = opts.CanQuery ~= false
+	part.CastShadow = opts.CastShadow == true
+	part.Transparency = opts.Transparency or 0
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.FrontSurface = Enum.SurfaceType.Smooth
+	part.BackSurface = Enum.SurfaceType.Smooth
+	part.LeftSurface = Enum.SurfaceType.Smooth
+	part.RightSurface = Enum.SurfaceType.Smooth
+	if opts.Tag then
+		part:SetAttribute("Tag", opts.Tag)
+	end
+	part.Parent = parent
+	return part
+end
+
+--- Deterministic 0..1 value from two grid coords, for colour / material variety.
+--  Plain arithmetic (no Luau bit operators) so this file can also be parsed by the
+--  Lua 5.1 tooling in tools/.
+local function tileHash(gx, gy)
+	local h = (gx * 73856093 + gy * 19349663) % 1048576
+	return h / 1048576
+end
+
+local function tileColor(gx, gy)
+	local palette = Config.World.WallPalette
+	return palette[math.floor(tileHash(gx, gy) * #palette) % #palette + 1]
+end
+
+local function tileMaterial(gx, gy)
+	local list = Config.World.WallMaterials
+	return list[math.floor(tileHash(gx + 7, gy + 3) * #list) % #list + 1]
+end
+
+--- Custom-styled prompts: the server keeps the logic, the client draws the UI.
+local function prompt(parent, action, object, distance, hold)
+	local p = Instance.new("ProximityPrompt")
+	p.ActionText = action
+	p.ObjectText = object
+	p.MaxActivationDistance = distance or 12
+	p.HoldDuration = hold or 0
+	p.RequiresLineOfSight = false
+	p.RequiresFreeLook = false
+	p.Style = Enum.ProximityPromptStyle.Custom
+	p.Parent = parent
+	return p
+end
+
+---------------------------------------------------------------------------
+-- build
+---------------------------------------------------------------------------
+
+--- root: Folder to build into. opts = { seed }
+function MapBuilder.build(root, opts)
+	opts = opts or {}
+	local world = Config.World
+
+	local maze = MazeGen.new({
+		cellsWide = world.CellsWide,
+		cellsDeep = world.CellsDeep,
+		seed = opts.seed or 1337,
+		braid = world.Braid,
+		rooms = world.Rooms,
+	})
+
+	local self = setmetatable({}, MapBuilder)
+	self.maze = maze
+	self.seed = opts.seed or 1337
+	self.tile = world.Tile
+	self.wallHeight = world.WallHeight
+	self.boundT = 8
+	self.halfW = maze.gridW * self.tile / 2
+	self.halfH = maze.gridH * self.tile / 2
+	self.used = {}
+	self.promptIndex = {}
+	self.cells = {}
+	self.supplies = {}
+	self.lockers = {}
+	self.lamps = {}
+	self._seq = 0
+
+	local level = Instance.new("Folder")
+	level.Name = "Level"
+	level.Parent = root
+	self.folder = level
+	-- The replicated root the client watches for round attributes. Kept separate from
+	-- self.folder on purpose: parenting geometry must never move these writes.
+	self.net = root
+
+	self.folders = {}
+	for _, name in ipairs({ "Walls", "Structure", "Props", "Pickups", "Lockers", "Lamps" }) do
+		local f = Instance.new("Folder")
+		f.Name = name
+		f.Parent = level
+		self.folders[name] = f
+	end
+
+	self:buildFloorAndRoof()
+	self:buildWalls()
+	self:buildAirlock()
+	self:buildPerimeter()
+	self:buildProps()
+
+	return self
+end
+
+function MapBuilder:worldOf(gx, gy, y)
+	local x, z = self.maze:tileToWorld(gx, gy, self.tile)
+	return Vector3.new(x, y or 0, z)
+end
+
+function MapBuilder:tileOf(position)
+	return self.maze:worldToTile(position.X, position.Z, self.tile)
+end
+
+function MapBuilder:markUsed(gx, gy)
+	if not self.used[gy] then
+		self.used[gy] = {}
+	end
+	self.used[gy][gx] = true
+end
+
+function MapBuilder:isFree(gx, gy)
+	if not self.maze:walkable(gx, gy) then
+		return false
+	end
+	return not (self.used[gy] and self.used[gy][gx])
+end
+
+---------------------------------------------------------------------------
+
+function MapBuilder:buildFloorAndRoof()
+	local world = Config.World
+	local pad = self.boundT + 16
+	local parent = self.folders.Structure
+
+	box(parent, Vector3.new(-self.halfW - pad, -2, -self.halfH - pad), Vector3.new(self.halfW + pad, 0, self.halfH + pad), {
+		Name = "Floor",
+		Material = Enum.Material.Slate,
+		Color = world.FloorColor,
+		Tag = "floor",
+	})
+
+	box(parent, Vector3.new(-self.halfW - pad, world.RoofHeight, -self.halfH - pad), Vector3.new(self.halfW + pad, world.RoofHeight + 4, self.halfH + pad), {
+		Name = "Ceiling",
+		Material = Enum.Material.CorrodedMetal,
+		Color = world.RoofColor,
+		Tag = "ceiling",
+	})
+end
+
+function MapBuilder:buildWalls()
+	local maze = self.maze
+	local tile = self.tile
+	local parent = self.folders.Walls
+
+	for _, rect in ipairs(maze:solidRects()) do
+		local cx, cz = maze:tileToWorld(rect.gx + (rect.w - 1) / 2, rect.gy + (rect.h - 1) / 2, tile)
+		local hx = rect.w * tile / 2
+		local hz = rect.h * tile / 2
+		box(parent, Vector3.new(cx - hx, 0, cz - hz), Vector3.new(cx + hx, self.wallHeight, cz + hz), {
+			Name = "Wall",
+			Material = tileMaterial(rect.gx, rect.gy),
+			Color = tileColor(rect.gx, rect.gy),
+			Tag = "wall",
+		})
+	end
+end
+
+--- Widen the entry cell into a bay big enough for a whole team.
+function MapBuilder:buildAirlock()
+	local maze = self.maze
+	local ex, ey = maze.entryX, maze.entryY
+
+	for gy = ey - 2, ey + 2 do
+		for gx = ex, ex + 3 do
+			maze:setSolid(gx, gy, false)
+		end
+	end
+
+	self.entryTile = { gx = ex + 1, gy = ey }
+	self.spawnCFs = {}
+	for i = -2, 2 do
+		local row = math.floor((i + 2) / 2)
+		self.spawnCFs[#self.spawnCFs + 1] = CFrame.new(self:worldOf(ex + 1 + row, ey + i, 4))
+	end
+	self.entryCFrame = CFrame.new(self:worldOf(self.entryTile.gx, self.entryTile.gy, 4))
+end
+
+--- Sealing wall with a doorway cut into the west face, plus the extraction dock.
+function MapBuilder:buildPerimeter()
+	local tile = self.tile
+	local t = self.boundT
+	local height = self.wallHeight + 10
+	local parent = self.folders.Structure
+	local maze = self.maze
+
+	local westOut, westIn = -self.halfW - t, -self.halfW
+	local eastIn, eastOut = self.halfW, self.halfW + t
+	local northOut, northIn = -self.halfH - t, -self.halfH
+	local southIn, southOut = self.halfH, self.halfH + t
+
+	local _, gateZ = maze:tileToWorld(maze.entryX, maze.entryY, tile)
+	local gapA, gapB = gateZ - tile / 2, gateZ + tile / 2
+	self.gateZ = gateZ
+
+	box(parent, Vector3.new(westOut, 0, northOut), Vector3.new(westIn, height, gapA), { Name = "Seal_N", Color = tileColor(1, 1) })
+	box(parent, Vector3.new(westOut, 0, gapB), Vector3.new(westIn, height, southOut), { Name = "Seal_S", Color = tileColor(1, 9) })
+	box(parent, Vector3.new(eastIn, 0, northOut), Vector3.new(eastOut, height, southOut), { Name = "Seal_E", Color = tileColor(9, 3) })
+	box(parent, Vector3.new(westOut, 0, northOut), Vector3.new(eastOut, height, northIn), { Name = "Seal_W", Color = tileColor(5, 5) })
+	box(parent, Vector3.new(westOut, 0, southIn), Vector3.new(eastOut, height, southOut), { Name = "Seal_S2", Color = tileColor(6, 2) })
+
+	-- dock outside the gate
+	local dockX = westOut - 26
+	box(parent, Vector3.new(dockX, -2, gateZ - 14), Vector3.new(westOut + 0.5, 0, gateZ + 14), {
+		Name = "Dock",
+		Material = Enum.Material.DiamondPlate,
+		Color = Color3.fromRGB(34, 36, 38),
+	})
+	box(parent, Vector3.new(dockX - 1, 0, gateZ - 15), Vector3.new(westOut, 12, gateZ - 14), {
+		Name = "DockRail",
+		Material = Enum.Material.DiamondPlate,
+		Color = Color3.fromRGB(40, 42, 44),
+	})
+	box(parent, Vector3.new(dockX - 1, 0, gateZ + 14), Vector3.new(westOut, 12, gateZ + 15), {
+		Name = "DockRail",
+		Material = Enum.Material.DiamondPlate,
+		Color = Color3.fromRGB(40, 42, 44),
+	})
+
+	self.pad = box(parent, Vector3.new(dockX + 2, 0, gateZ - 6), Vector3.new(westOut - 6, 1.2, gateZ + 6), {
+		Name = "EscapePad",
+		Material = Enum.Material.Neon,
+		Color = CLOSED_PAD,
+		Transparency = 0.25,
+		Tag = "escapePad",
+	})
+	self.padLight = Instance.new("PointLight")
+	self.padLight.Range = 36
+	self.padLight.Brightness = 0.5
+	self.padLight.Color = Color3.fromRGB(130, 40, 40)
+	self.padLight.Shadows = false
+	self.padLight.Parent = self.pad
+
+	self.gate = box(parent, Vector3.new(westOut + 0.4, 0, gapA - 0.3), Vector3.new(westIn - 0.4, self.wallHeight + 2, gapB + 0.3), {
+		Name = "BlastDoor",
+		Material = Enum.Material.DiamondPlate,
+		Color = Color3.fromRGB(52, 50, 46),
+		Tag = "gate",
+	})
+	self.gateClosedPos = self.gate.Position
+	self.gateOpenPos = self.gate.Position + Vector3.new(0, self.wallHeight + 14, 0)
+	self.gateOpen = false
+
+	self.escapeCFrame = CFrame.new((dockX + westOut) / 2, 3, gateZ)
+
+	local sign = self:makeSignPart("EXTRACTION", Color3.fromRGB(200, 70, 58), Vector3.new(0.6, 4, 14))
+	sign.CFrame = CFrame.new(westOut - 0.4, 8.5, gateZ) * CFrame.Angles(0, math.rad(90), 0)
+end
+
+--- Free-standing label board. SurfaceGui.CFrame is read-only, so the *part* is
+--- what gets placed and the gui is stuck to its front face.
+function MapBuilder:makeSignPart(text, color, size, face)
+	local parent = self.folders.Structure
+	local part = Instance.new("Part")
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.Name = "Sign_" .. text
+	part.Size = size
+	part.Material = Enum.Material.Slate
+	part.Color = Color3.fromRGB(16, 17, 19)
+	part.CastShadow = false
+	part.Transparency = 1
+	part.Parent = parent
+
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = face or Enum.NormalId.Front
+	gui.PixelsPerStud = 64
+	gui.BackgroundTransparency = 1
+	gui.Parent = part
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.Code
+	label.TextColor3 = color
+	label.TextTransparency = 0.08
+	label.TextScaled = true
+	label.Parent = gui
+
+	return part
+end
+
+---------------------------------------------------------------------------
+-- props
+---------------------------------------------------------------------------
+
+--- Score every free tile by depth from the airlock, then take the best `count`
+--- with at least `separation` tiles between them. Deep + spread = no free wins.
+function MapBuilder:scoredTiles(count, separation, minDepth)
+	local maze = self.maze
+	local field = maze:distanceFromEntry()
+	local candidates = {}
+
+	for gy = 1, maze.gridH do
+		for gx = 1, maze.gridW do
+			if self:isFree(gx, gy) then
+				local depth = field[gy][gx]
+				if depth and depth &gt;= (minDepth or 0) then
+					candidates[#candidates + 1] = { gx = gx, gy = gy, depth = depth }
+				end
+			end
+		end
+	end
+
+	table.sort(candidates, function(a, b)
+		if a.depth == b.depth then
+			return a.gx + a.gy &lt; b.gx + b.gy
+		end
+		return a.depth &gt; b.depth
+	end)
+
+	local chosen = {}
+	local sep2 = (separation or 0) ^ 2
+	for _, cand in ipairs(candidates) do
+		if #chosen &gt;= count then
+			break
+		end
+		local far = true
+		for _, other in ipairs(chosen) do
+			local dx, dy = other.gx - cand.gx, other.gy - cand.gy
+			if dx * dx + dy * dy &lt; sep2 then
+				far = false
+				break
+			end
+		end
+		if far then
+			chosen[#chosen + 1] = cand
+			self:markUsed(cand.gx, cand.gy)
+		end
+	end
+	return chosen
+end
+
+function MapBuilder:buildProps()
+	local round = Config.Round
+
+	for _, spot in ipairs(self:scoredTiles(round.CellsSpawned, 12, 16)) do
+		self.cells[#self.cells + 1] = self:addPickup("cell", spot.gx, spot.gy)
+	end
+	for _, spot in ipairs(self:scoredTiles(round.Batteries, 6, 4)) do
+		self.supplies[#self.supplies + 1] = self:addPickup("battery", spot.gx, spot.gy)
+	end
+	for _, spot in ipairs(self:scoredTiles(round.Bandages, 6, 4)) do
+		self.supplies[#self.supplies + 1] = self:addPickup("bandage", spot.gx, spot.gy)
+	end
+
+	self.lockers = self:buildLockers(round.Lockers)
+	self.lamps = self:buildLamps(round.Lamps)
+	self:buildClutter()
+end
+
+local PICKUP_STYLE = {
+	cell = {
+		size = Vector3.new(2.4, 2.4, 2.4),
+		color = Color3.fromRGB(74, 226, 200),
+		action = "TAKE CELL",
+		object = "Igniter cell",
+		light = 2.1,
+		hold = 0.7,
+	},
+	battery = {
+		size = Vector3.new(1.6, 2.2, 1.6),
+		color = Color3.fromRGB(198, 206, 92),
+		action = "TAKE CELL",
+		object = "Spare cell",
+		light = 0.8,
+		hold = 0.35,
+	},
+	bandage = {
+		size = Vector3.new(2.2, 1.2, 1.6),
+		color = Color3.fromRGB(224, 224, 228),
+		action = "USE MEDKIT",
+		object = "Field dressing",
+		light = 0.35,
+		hold = 0.6,
+	},
+}
+
+function MapBuilder:addPickup(kind, gx, gy)
+	local style = PICKUP_STYLE[kind]
+	local parent = self.folders.Pickups
+	local pos = self:worldOf(gx, gy, 3.1)
+	self._seq = self._seq + 1
+
+	local part = Instance.new("Part")
+	part.Name = kind .. "_" .. self._seq
+	part.Anchored = true
+	part.CanCollide = false
+	part.Size = style.size
+	part.Position = pos
+	part.Material = Enum.Material.Neon
+	part.Color = style.color
+	part.Transparency = kind == "bandage" and 0.2 or 0
+	part.CastShadow = false
+	part.Parent = parent
+
+	local light = Instance.new("PointLight")
+	light.Range = kind == "cell" and 26 or 12
+	light.Brightness = style.light
+	light.Color = style.color
+	light.Shadows = false
+	light.Parent = part
+
+	local halo
+	if kind == "cell" then
+		-- Slow breathe, so a cell you have not reached yet still reads as alive.
+		TweenService:Create(light, TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+			Brightness = style.light * 0.3,
+		}):Play()
+		halo = Instance.new("Part")
+		halo.Anchored = true
+		halo.CanCollide = false
+		halo.CanQuery = false
+		halo.Name = "Halo"
+		halo.Size = Vector3.new(4.6, 4.6, 4.6)
+		halo.Material = Enum.Material.Neon
+		halo.Color = style.color
+		halo.Transparency = 0.84
+		halo.Shape = Enum.PartType.Ball
+		halo.Position = pos
+		halo.CastShadow = false
+		halo.Parent = parent
+	end
+
+	local pr = prompt(part, style.action, style.object, 11, style.hold)
+	pr:SetAttribute("kind", kind)
+
+	local record = {
+		kind = kind,
+		part = part,
+		halo = halo,
+		light = light,
+		prompt = pr,
+		tile = { gx, gy },
+		taken = false,
+	}
+	self.promptIndex[pr] = record
+	return record
+end
+
+--- Consume a pickup: kill the prompt first so a held E cannot double-fire.
+function MapBuilder:takePickup(pickup)
+	if pickup.taken then
+		return
+	end
+	pickup.taken = true
+	if pickup.prompt then
+		pickup.prompt.Enabled = false
+	end
+	if pickup.halo then
+		pickup.halo:Destroy()
+		pickup.halo = nil
+	end
+	if pickup.part then
+		pickup.part:Destroy()
+		pickup.part = nil
+	end
+	pickup.light = nil
+end
+
+--- Cabinets stood against a wall, one tile deep, peek camera baked into attributes.
+function MapBuilder:buildLockers(count)
+	local lockers = {}
+	for _, spot in ipairs(self:scoredTiles(count, 5, 5)) do
+		local dir = self:wallNeighbour(spot.gx, spot.gy)
+		if dir then
+			lockers[#lockers + 1] = self:buildLocker(spot.gx, spot.gy, dir.X, dir.Z)
+		end
+	end
+	return lockers
+end
+
+function MapBuilder:buildLocker(gx, gy, ox, oy)
+	local tile = self.tile
+	local center = self:worldOf(gx, gy, 0)
+	local wall = Vector3.new(ox, 0, oy) -- into the wall
+	local side = Vector3.new(-wall.Z, 0, wall.X)
+	local depth, width, height = 3.2, 5.6, 8.6
+	local flush = tile / 2 -- back panel sits on the wall face
+	local along = flush - depth / 2
+
+	local shell = Instance.new("Model")
+	shell.Name = "Locker_" .. gx .. "_" .. gy
+	shell.PrimaryPart = nil
+	shell.Parent = self.folders.Lockers
+
+	local color = Color3.fromRGB(44, 48, 47)
+	local mat = Enum.Material.CorrodedMetal
+
+	local function shellPart(size, alongC, sideC, yC)
+		local sx, sz = size.X, size.Z
+		if ox == 0 then
+			sx, sz = size.Z, size.X
+		end
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.Size = Vector3.new(sx, size.Y, sz)
+		p.CFrame = CFrame.new(center + wall * alongC + side * sideC + Vector3.new(0, yC, 0))
+		p.Material = mat
+		p.Color = color
+		p.CastShadow = false
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.Parent = shell
+		return p
+	end
+
+	shellPart(Vector3.new(0.4, height, width), flush - 0.2, 0, height / 2) -- back
+	shellPart(Vector3.new(depth, height, 0.4), along, width / 2 - 0.2, height / 2) -- left
+	shellPart(Vector3.new(depth, height, 0.4), along, -width / 2 + 0.2, height / 2) -- right
+	shellPart(Vector3.new(depth, 0.4, width), along, 0, height - 0.2) -- top
+
+	local door = Instance.new("Part")
+	door.Anchored = true
+	door.Name = "Door"
+	door.Material = Enum.Material.DiamondPlate
+	door.Color = Color3.fromRGB(58, 60, 62)
+	door.Transparency = 0.55
+	door.CanCollide = false
+	door.CastShadow = false
+	local doorAlong = flush - depth - 0.15
+	if ox ~= 0 then
+		door.Size = Vector3.new(0.35, height - 0.4, width - 0.3)
+	else
+		door.Size = Vector3.new(width - 0.3, height - 0.4, 0.35)
+	end
+	door.CFrame = CFrame.new(center + wall * doorAlong + Vector3.new(0, height / 2, 0))
+	door.Parent = shell
+
+	local pr = prompt(door, "HIDE", "Locker", 13, 0)
+	pr:SetAttribute("kind", "locker")
+
+	local inside = center + wall * along + Vector3.new(0, 3, 0)
+	local exitPos = center - wall * 2.4 + Vector3.new(0, 4, 0)
+	local peekEye = center + wall * (along + 0.5) + Vector3.new(0, 4.2, 0)
+
+	local locker = {
+		model = shell,
+		door = door,
+		prompt = pr,
+		tile = { gx, gy },
+		occupied = nil,
+		insideCF = CFrame.new(inside),
+		exitCF = CFrame.new(exitPos),
+		peekCF = CFrame.lookAt(peekEye, center - wall * 12 + Vector3.new(0, 4.2, 0)),
+		wall = wall,
+	}
+
+	-- Parts are authored straight into world space, so no PivotTo here: calling it
+	-- after placement would displace the whole cabinet.
+	shell.PrimaryPart = door
+	locker.tileKey = gx .. "_" .. gy
+	if not self.lockerByTile then
+		self.lockerByTile = {}
+	end
+	self.lockerByTile[locker.tileKey] = locker
+	self.promptIndex[pr] = { kind = "locker", locker = locker }
+
+	return locker
+end
+
+--- Ceiling lamps. Roughly a third are dying, which is the entire point of the fog.
+function MapBuilder:buildLamps(count)
+	local maze = self.maze
+	local lamps = {}
+	local spots = { { maze.entryX + 1, maze.entryY } }
+
+	for _, room in ipairs(maze.rooms) do
+		spots[#spots + 1] = { room.cx, room.cy }
+		spots[#spots + 1] = { math.floor((room.gx0 + room.cx) / 2), math.floor((room.gy0 + room.cy) / 2) }
+		spots[#spots + 1] = { math.floor((room.gx1 + room.cx) / 2), math.floor((room.gy1 + room.cy) / 2) }
+	end
+	for _, tilePos in ipairs(maze:shuffledOpenTiles()) do
+		spots[#spots + 1] = tilePos
+	end
+
+	local seen = {}
+	for i = 1, #spots do
+		if #lamps &gt;= count then
+			break
+		end
+		local gx, gy = spots[i][1], spots[i][2]
+		local key = gx .. "_" .. gy
+		if not seen[key] and maze:walkable(gx, gy) then
+			seen[key] = true
+			lamps[#lamps + 1] = self:addLamp(gx, gy)
+		end
+	end
+	return lamps
+end
+
+function MapBuilder:addLamp(gx, gy)
+	local pos = self:worldOf(gx, gy, self.wallHeight - 0.9)
+	local housing = box(self.folders.Lamps, pos - Vector3.new(1.6, 0.4, 1.6), pos + Vector3.new(1.6, 0.4, 1.6), {
+		Name = "Lamp",
+		Material = Enum.Material.CorrodedMetal,
+		Color = Color3.fromRGB(38, 38, 40),
+		CanCollide = false,
+	})
+
+	local bulb = Instance.new("Part")
+	bulb.Anchored = true
+	bulb.CanCollide = false
+	bulb.CanQuery = false
+	bulb.Name = "Bulb"
+	bulb.Size = Vector3.new(1.5, 0.5, 1.5)
+	bulb.Material = Enum.Material.Neon
+	bulb.Color = Color3.fromRGB(255, 224, 168)
+	bulb.CFrame = CFrame.new(pos - Vector3.new(0, 0.6, 0))
+	bulb.CastShadow = false
+	bulb.Parent = self.folders.Lamps
+
+	local light = Instance.new("PointLight")
+	light.Range = 30
+	light.Brightness = 1.1
+	light.Color = Color3.fromRGB(255, 226, 178)
+	light.Shadows = false
+	light.Parent = bulb
+
+	local lamp = {
+		light = light,
+		bulb = bulb,
+		housing = housing,
+		base = 0.7 + tileHash(gx, gy) * 0.5,
+		phase = tileHash(gx + 13, gy + 5) * 40,
+		broken = tileHash(gx + 3, gy + 17) &lt; 0.34,
+		tile = { gx, gy },
+	}
+	if lamp.broken then
+		light.Brightness = 0
+		bulb.Transparency = 0.6
+		bulb.Color = Color3.fromRGB(92, 88, 84)
+	end
+	return lamp
+end
+
+--- Pipes overhead, crates against room walls. Only the crates collide, and they are
+--- always pushed into a wall so a corridor is never narrowed.
+function MapBuilder:buildClutter()
+	local maze = self.maze
+	local tile = self.tile
+	local parent = self.folders.Props
+
+	for _, room in ipairs(maze.rooms) do
+		-- one pipe run along the room's north edge
+		local a = self:worldOf(room.gx0, room.gy0, self.wallHeight - 2.2)
+		local b = self:worldOf(room.gx1, room.gy0, self.wallHeight - 2.2)
+		local length = (b - a).Magnitude
+		if length &gt; 2 then
+			local pipe = Instance.new("Part")
+			pipe.Anchored = true
+			pipe.CanCollide = false
+			pipe.CanQuery = false
+			pipe.Name = "Pipe"
+			pipe.Shape = Enum.PartType.Cylinder
+			pipe.Size = Vector3.new(length, 0.9, 0.9)
+			pipe.CFrame = CFrame.new((a + b) / 2) * CFrame.Angles(0, 0, math.rad(90))
+			pipe.Material = Enum.Material.CorrodedMetal
+			pipe.Color = Color3.fromRGB(52, 46, 42)
+			pipe.CastShadow = false
+			pipe.Parent = parent
+		end
+
+		for _, slot in ipairs({ { room.gx0, room.gy0 + 1 }, { room.gx1, room.gy1 - 1 } }) do
+			local gx, gy = slot[1], slot[2]
+			if maze:walkable(gx, gy) then
+				local pos = self:worldOf(gx, gy, 0)
+				local dir = self:wallNeighbour(gx, gy)
+				if dir then
+					pos = pos + dir * 3
+				end
+				local crate = box(parent, pos + Vector3.new(-2, 0, -2), pos + Vector3.new(2, 4, 2), {
+					Name = "Crate",
+					Material = Enum.Material.Wood,
+					Color = Color3.fromRGB(58, 45, 33),
+					Tag = "clutter",
+				})
+				if dir then
+					crate.CFrame = crate.CFrame * CFrame.Angles(0, math.rad(tileHash(gx, gy) * 30 - 15), 0)
+				end
+			end
+		end
+	end
+end
+
+--- First solid neighbour direction, used to hug clutter against walls.
+function MapBuilder:wallNeighbour(gx, gy)
+	local offsets = { { 1, 0 }, { 0, 1 }, { -1, 0 }, { 0, -1 } }
+	for i = 1, 4 do
+		local ox, oy = offsets[i][1], offsets[i][2]
+		if self.maze:isSolid(gx + ox, gy + oy) then
+			return Vector3.new(ox, 0, oy)
+		end
+	end
+	return nil
+end
+
+---------------------------------------------------------------------------
+-- runtime behaviour
+---------------------------------------------------------------------------
+
+function MapBuilder:openGate()
+	if self.gateOpen then
+		return
+	end
+	self.gateOpen = true
+	self.gate.Position = self.gateOpenPos
+	self.pad.Color = OPEN_PAD
+	self.padLight.Color = OPEN_PAD
+	self.padLight.Brightness = 2.4
+	self.net:SetAttribute("GateOpen", true)
+end
+
+function MapBuilder:closeGate()
+	self.gateOpen = false
+	if self.gate then
+		self.gate.Position = self.gateClosedPos
+		self.pad.Color = CLOSED_PAD
+		self.padLight.Color = Color3.fromRGB(130, 40, 40)
+		self.padLight.Brightness = 0.5
+	end
+	self.net:SetAttribute("GateOpen", false)
+end
+
+function MapBuilder:setPurge(active)
+	self.purge = active and true or false
+end
+
+--- Lamp flicker. Cheap, and it is the whole "this place is still alive" feel.
+function MapBuilder:tick(time)
+	for _, lamp in ipairs(self.lamps) do
+		if lamp.broken then
+			lamp.light.Brightness = noise(lamp.phase, time * 2.4, 0) &gt; 0.86 and 0.9 or 0
+		else
+			local wobble = 0.82 + 0.18 * noise(lamp.phase, time * 1.1, 0)
+			if self.purge then
+				lamp.light.Color = Color3.fromRGB(196, 44, 36)
+				wobble = 0.4 + 0.6 * math.abs(math.sin(time * 3 + lamp.phase))
+			else
+				lamp.light.Color = Color3.fromRGB(255, 226, 178)
+			end
+			lamp.light.Brightness = lamp.base * wobble
+		end
+	end
+end
+
+function MapBuilder:destroy()
+	if self.folder then
+		self.folder:Destroy()
+		self.folder = nil
+	end
+	self.cells = {}
+	self.supplies = {}
+	self.lockers = {}
+	self.lamps = {}
+end
+
+---------------------------------------------------------------------------
+-- staging lobby (built once; lives under the map, out of the maze's sightlines)
+---------------------------------------------------------------------------
+
+function MapBuilder.buildLobby(parent, opts)
+	local world = Config.World
+	local size = world.LobbySize
+	local optsY = (opts and opts.y) or -120
+
+	local root = Instance.new("Folder")
+	root.Name = "Lobby"
+	root.Parent = parent
+
+	box(root, Vector3.new(-size, optsY - 2, -size), Vector3.new(size, optsY, size), {
+		Name = "LobbyFloor",
+		Material = Enum.Material.DiamondPlate,
+		Color = Color3.fromRGB(40, 42, 44),
+	})
+	box(root, Vector3.new(-size, optsY + world.WallHeight + 6, -size), Vector3.new(size, optsY + world.WallHeight + 9, size), {
+		Name = "LobbyRoof",
+		Material = Enum.Material.CorrodedMetal,
+		Color = Color3.fromRGB(24, 25, 27),
+	})
+	for _, s in ipairs({ -1, 1 }) do
+		box(root, Vector3.new(-size - 1, optsY, s * size - 1), Vector3.new(size + 1, optsY + world.WallHeight + 6, s * size + 1), { Name = "LobbyWall" })
+		box(root, Vector3.new(s * size - 1, optsY, -size - 1), Vector3.new(s * size + 1, optsY + world.WallHeight + 6, size + 1), { Name = "LobbyWall" })
+	end
+
+	for _, off in ipairs({ -size / 2, size / 2 }) do
+		local lamp = Instance.new("Part")
+		lamp.Anchored = true
+		lamp.CanCollide = false
+		lamp.CanQuery = false
+		lamp.Size = Vector3.new(3, 0.6, 3)
+		lamp.Material = Enum.Material.Neon
+		lamp.Color = Color3.fromRGB(120, 230, 170)
+		lamp.Position = Vector3.new(off, optsY + world.WallHeight + 4, 0)
+		lamp.CastShadow = false
+		lamp.Parent = root
+		local light = Instance.new("PointLight")
+		light.Range = 68
+		light.Brightness = 1.4
+		light.Color = Color3.fromRGB(150, 240, 190)
+		light.Shadows = false
+		light.Parent = lamp
+	end
+
+	local board = Instance.new("Part")
+	board.Anchored = true
+	board.Size = Vector3.new(20, 9, 0.6)
+	board.Material = Enum.Material.Slate
+	board.Color = Color3.fromRGB(18, 20, 22)
+	board.Position = Vector3.new(0, optsY + 7.5, -size + 1)
+	board.Parent = root
+
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Board"
+	gui.Face = Enum.NormalId.Front
+	gui.PixelsPerStud = 46
+	gui.BackgroundColor3 = Color3.fromRGB(8, 10, 11)
+	gui.BackgroundTransparency = 0.2
+	gui.Parent = board
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.Size = UDim2.new(1, -16, 0, 30)
+	title.Position = UDim2.new(0, 8, 0, 6)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.Code
+	title.TextColor3 = Color3.fromRGB(140, 240, 190)
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Text = "BLACKSITE // STAGING"
+	title.Parent = gui
+
+	local body = Instance.new("TextLabel")
+	body.Name = "Body"
+	body.Size = UDim2.new(1, -16, 1, -50)
+	body.Position = UDim2.new(0, 8, 0, 42)
+	body.BackgroundTransparency = 1
+	body.Font = Enum.Font.Code
+	body.TextColor3 = Color3.fromRGB(198, 202, 204)
+	body.TextXAlignment = Enum.TextXAlignment.Left
+	body.TextYAlignment = Enum.TextYAlignment.Top
+	body.TextWrapped = true
+	body.Text = "waiting for crew..."
+	body.Parent = gui
+
+	return {
+		root = root,
+		y = optsY,
+		size = size,
+		boardGui = gui,
+		boardBody = body,
+		spawnCFs = (function()
+			local list = {}
+			for i = 0, 7 do
+				local angle = (i / 8) * math.pi * 2
+				list[#list + 1] = CFrame.new(math.cos(angle) * size / 2.2, optsY + 4, math.sin(angle) * size / 2.2)
+			end
+			return list
+		end)(),
+		centre = CFrame.new(0, optsY + 4, 0),
+	}
+end
+
+return MapBuilder
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX10"><Properties><string name="Name">Round</string><ProtectedString name="Source">--[[
+	Round - the director.
+
+ Owns the phase machine (intermission -&gt; ingress -&gt; active -&gt; resolving), every
+ player's run state, the objective loop, the hide/eject logic and the attribute
+ pipeline the HUD reads. Entity.lua answers to this; nothing else talks to players.
+
+ Design note: the *server* owns flashlight battery, stamina and lives. The client
+ only renders them. That keeps the Hollow's behaviour (which reacts to your beam)
+ honest, and means a curious exploiter cannot simply switch their light off
+ server-side and walk around invisible.
+]]
+
+local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+--[[ Shared modules live in ReplicatedStorage.Blacksite. Addressed through the service rather
+     than script.Parent.Parent, because these folders are siblings, not ancestors. ]]
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("Blacksite")
+local Config = require(shared:WaitForChild("Config"))
+local Attributes = require(shared:WaitForChild("Attributes"))
+local Remotes = require(shared:WaitForChild("Remotes"))
+local Util = require(shared:WaitForChild("Util"))
+local MazeGen = require(shared:WaitForChild("MazeGen"))
+
+local MapBuilder = require(script.Parent:WaitForChild("MapBuilder"))
+local Entity = require(script.Parent:WaitForChild("Entity"))
+
+local Round = {}
+Round.__index = Round
+
+Round.Phase = {
+	Intermission = "intermission",
+	Ingress = "ingress",
+	Active = "active",
+	Resolving = "resolving",
+}
+
+local Think = 1 / 20
+local MAX_DT = 0.1
+
+---------------------------------------------------------------------------
+-- setup
+---------------------------------------------------------------------------
+
+--- deps = { root = Folder, remotes = Remotes, lobby = buildLobby result }
+function Round.new(deps)
+	local self = setmetatable({}, Round)
+	self.root = deps.root
+	self.remotes = deps.remotes
+	self.lobby = deps.lobby
+
+	self.phase = Round.Phase.Intermission
+	self.phaseTime = 0
+	self.now = 0
+	self.countdown = Config.Round.Intermission
+	self.seedSeq = MazeGen.hashString(Config.Meta.SeedSalt) % 100000
+	self.players = {}
+	self.spawnCursor = 0
+	self.thinkIn = 0
+	self.publishIn = 0
+	self.boardIn = 0
+	self.statIn = 0
+
+	-- Players already in the room when the script starts have missed PlayerAdded.
+	for _, player in ipairs(Players:GetPlayers()) do
+		self:attach(player)
+	end
+
+	self.cellsFound = 0
+	self.cellsNeeded = Config.Round.CellsNeeded
+	self.timeLeft = Config.Round.Limit
+	self.gateOpen = false
+	self.purging = false
+	self.livesLost = 0
+	self.result = nil
+	self.level = nil
+	self.entity = nil
+
+	self.stats = { rounds = 0, escapes = 0, deaths = 0, best = nil, cells = 0 }
+
+	self.root:SetAttribute("Phase", self.phase)
+	self.root:SetAttribute("Countdown", self.countdown)
+	self.root:SetAttribute("CellsFound", 0)
+	self.root:SetAttribute("CellsNeeded", self.cellsNeeded)
+	self.root:SetAttribute("TimeLeft", self.timeLeft)
+	self.root:SetAttribute("GateOpen", false)
+	self.root:SetAttribute("Purge", false)
+	self.root:SetAttribute("Alive", 0)
+	self.root:SetAttribute("Escaped", 0)
+	self.root:SetAttribute("Waiting", 0)
+	self.root:SetAttribute("Result", "")
+
+	self:connectPrompts()
+	return self
+end
+
+function Round:connectPrompts()
+	-- One server-side connection for every prompt the level spawns, present and future.
+	ProximityPromptService.PromptTriggered:Connect(function(player, prompt)
+		self:onPrompt(player, prompt, "trigger")
+	end)
+
+	-- Holding a prompt should be loud: it is the moment the run gets decided.
+	local ok = pcall(function()
+		ProximityPromptService.PromptButtonHoldBegan:Connect(function(player, prompt)
+			self:onPrompt(player, prompt, "hold")
+		end)
+	end)
+	self.holdsSupported = ok
+end
+
+---------------------------------------------------------------------------
+-- player bookkeeping
+---------------------------------------------------------------------------
+
+function Round:attach(player)
+	if self.players[player] then
+		return self.players[player]
+	end
+
+	local self2 = self
+	local st = {
+		player = player,
+		joined = false,
+		alive = true,
+		escaped = false,
+		eliminated = false,
+		lives = Config.Player.Lives,
+		battery = Config.Player.BatteryMax,
+		stamina = Config.Player.StaminaMax,
+		flashOn = false,
+		wantSprint = false,
+		wantCrouch = false,
+		sprintLock = 0,
+		dread = 0,
+		found = 0,
+		speed = 0,
+		mode = "still",
+		noiseIn = 0,
+		pos = Vector3.zero,
+		look = Vector3.new(0, 0, -1),
+		tx = 1,
+		ty = 1,
+		dist = nil,
+		seen = false,
+		atDoor = false,
+		hiddenLock = nil,
+		character = nil,
+		humanoid = nil,
+		root = nil,
+		invulnUntil = 0,
+		contributed = 0,
+		grabs = 0,
+		timeIn = 0,
+		cellsSpawned = 0,
+	}
+	self.players[player] = st
+
+	st.addedConn = player.CharacterAdded:Connect(function(char)
+		self:onCharacter(player, st, char)
+	end)
+	st.removingConn = player.CharacterRemoving:Connect(function()
+		self:onCharacter(player, st, nil)
+	end)
+	if player.Character then
+		self:onCharacter(player, st, player.Character)
+	end
+
+	self:publish(st, true)
+	self:refreshLobby()
+	return st
+end
+
+function Round:detach(player)
+	local st = self.players[player]
+	if not st then
+		return
+	end
+	if st.hiddenLock then
+		st.hiddenLock.occupied = nil
+	end
+	if st.addedConn then
+		st.addedConn:Disconnect()
+	end
+	if st.diedConn then
+		st.diedConn:Disconnect()
+	end
+	if st.removingConn then
+		st.removingConn:Disconnect()
+	end
+	self.players[player] = nil
+	self:refreshLobby()
+end
+
+function Round:eachPlayer()
+	return pairs(self.players)
+end
+
+function Round:participantCount()
+	local n = 0
+	for _ in pairs(self.players) do
+		n = n + 1
+	end
+	return n
+end
+
+--- LoadCharacter yields, so never call it inline from the Heartbeat thread.
+function Round:loadCharacter(player)
+	task.spawn(function()
+		local ok, err = pcall(function()
+			player:LoadCharacter()
+		end)
+		if not ok then
+			-- LoadCharacter also raises CharacterAdded, so a silent pcall here would
+			-- hide any fault in the spawn path as a player standing in a void.
+			warn("[Blacksite] could not redeploy " .. player.Name .. ": " .. tostring(err))
+		end
+	end)
+end
+
+function Round:joinedCount()
+	local n = 0
+	for _, st in pairs(self.players) do
+		if st.joined then
+			n = n + 1
+		end
+	end
+	return n
+end
+
+function Round:nextSpawn()
+	self.spawnCursor = self.spawnCursor % 8 + 1
+	return self.spawnCursor
+end
+
+--- The old rig is gone (CharacterRemoving, a leave, a reset). Drop every reference
+--- to it so no tick tries to drive a destroyed character.
+function Round:clearCharacter(st)
+	if st.diedConn then
+		st.diedConn:Disconnect()
+		st.diedConn = nil
+	end
+	if st.hiddenLock then
+		st.hiddenLock.occupied = nil
+		st.hiddenLock = nil
+	end
+	st.character = nil
+	st.humanoid = nil
+	st.root = nil
+	st.dist = nil
+	st.seen = false
+	st.atDoor = false
+end
+
+function Round:onCharacter(player, st, char)
+	if not char then
+		-- CharacterRemoving fires right before the respawn, so a nil character here is
+		-- routine and not an error.
+		self:clearCharacter(st)
+		return
+	end
+	st.character = char
+	local humanoid = char:WaitForChild("Humanoid", 6)
+	if not humanoid then
+		return
+	end
+	st.humanoid = humanoid
+	st.root = char:WaitForChild("HumanoidRootPart", 6)
+
+	humanoid.MaxHealth = 100
+	humanoid.Health = 100
+	humanoid.WalkSpeed = Config.Player.WalkSpeed
+	humanoid.JumpPower = Config.Player.JumpEnabled and 50 or 0
+	humanoid.UseJumpPower = true
+	pcall(function()
+		humanoid.JumpHeight = Config.Player.JumpEnabled and 7 or 0
+	end)
+
+	if st.diedConn then
+		st.diedConn:Disconnect()
+	end
+	local self2 = self
+	st.diedConn = humanoid.Died:Connect(function()
+		self2:onDied(player, st)
+	end)
+
+	st.alive = true
+	self:applyMovement(st)
+	if self.phase == Round.Phase.Intermission then
+		st.needsDeploy = true
+	end
+	self:placeCharacter(player, st)
+end
+
+function Round:placeCharacter(player, st, forceLobby)
+	local char = st.character
+	if not char then
+		return
+	end
+	local list, index
+	local inMap = (self.phase == Round.Phase.Active or self.phase == Round.Phase.Ingress) and not forceLobby
+	if inMap then
+		if self.level then
+			list = self.level.spawnCFs
+		end
+	else
+		list = self.lobby and self.lobby.spawnCFs
+	end
+	-- A character that arrives before the phase flips cannot be placed in the map yet.
+	-- needsDeploy stays set until one is actually put inside, so activate() can finish
+	-- the job for anyone the async LoadCharacter left behind in the lift.
+	index = self:nextSpawn()
+	local cf
+	if list and list[index] then
+		cf = list[index]
+	elseif inMap and self.level then
+		cf = self.level.entryCFrame
+	elseif self.lobby then
+		cf = self.lobby.centre
+	end
+	if not cf then
+		return
+	end
+	char:PivotTo(cf + Vector3.new(0, 0.5, 0))
+	if inMap then
+		st.needsDeploy = nil
+		st.timeIn = self.now
+	end
+end
+
+function Round:onDied(player, st)
+	st.alive = false
+	st.seen = false
+	if st.hiddenLock then
+		st.hiddenLock.occupied = nil
+		st.hiddenLock = nil
+		self:setCloak(st, false)
+		st.found = 0
+	end
+
+	if st.escaped or self.phase ~= Round.Phase.Active then
+		return
+	end
+
+	st.lives = st.lives - 1
+	self.livesLost = self.livesLost + 1
+	self.stats.deaths = self.stats.deaths + 1
+	self:toast(player, "DRAGGED UNDER - " .. st.lives .. " RUNS LEFT", "bad")
+	self:toastAll(Config.Entity.Name .. " TOOK " .. player.Name, "warn")
+
+	if st.lives &gt; 0 then
+		local self2 = self
+		task.delay(2.4, function()
+			if st.lives &gt; 0 and self2.phase == Round.Phase.Active and player.Parent then
+				st.invulnUntil = self2.now + Config.Player.InvulnAfterGrab
+				self2:loadCharacter(player)
+				self2:toast(player, "PATCHED UP AT THE AIRLOCK", "good")
+			end
+		end)
+	else
+		st.eliminated = true
+		self:toast(player, "YOU ARE PART OF THE SUBLEVEL NOW", "bad")
+		self.remotes:toClient(player, "Fade", "black")
+	end
+end
+
+function Round:setCloak(st, on)
+	local char = st.character
+	if not char then
+		return
+	end
+	for _, inst in ipairs(char:GetDescendants()) do
+		if inst:IsA("BasePart") or inst:IsA("Decal") then
+			inst.Transparency = on and 1 or (inst:IsA("BasePart") and 0 or 1)
+		end
+	end
+end
+
+--- Snap a world position onto the nearest walkable tile the grid knows about.
+function Round:nearestWalkable(maze, gx, gy)
+	if maze:walkable(gx, gy) then
+		return gx, gy
+	end
+	for r = 1, 3 do
+		for dy = -r, r do
+			for dx = -r, r do
+				if math.max(math.abs(dx), math.abs(dy)) == r then
+					local nx, ny = gx + dx, gy + dy
+					if maze:walkable(nx, ny) then
+						return nx, ny
+					end
+				end
+			end
+		end
+	end
+	return gx, gy
+end
+
+---------------------------------------------------------------------------
+-- client input
+---------------------------------------------------------------------------
+
+function Round:action(player, name, arg, arg2)
+	local st = self.players[player]
+	if not st then
+		return
+	end
+
+	if name == Remotes.Actions.Join then
+		st.joined = true
+		if self.phase == Round.Phase.Active or self.phase == Round.Phase.Ingress then
+			-- late join: drop them straight into the airlock
+			st.eliminated = false
+			st.lives = math.max(1, st.lives)
+			st.escaped = false
+			st.needsDeploy = true
+			if not st.character or not st.character.Parent then
+				self:loadCharacter(player)
+			end
+			self:placeCharacter(player, st)
+		end
+		self:refreshLobby()
+		self:publish(st, true)
+	elseif name == Remotes.Actions.Flash then
+		if self.now - (st.flashT or 0) &lt; 0.15 then
+			return
+		end
+		st.flashT = self.now
+		local want = not not arg
+		if want and st.battery &lt;= 0.5 then
+			self:toast(player, "DEAD CELL - FIND A SPARE", "bad")
+			return
+		end
+		if want and st.hiddenLock then
+			return
+		end
+		st.flashOn = want
+		if want then
+			self:noise(st, Config.Noise.Locker * 0.8)
+		end
+		self:publish(st)
+	elseif name == Remotes.Actions.Restart then
+		st.joined = true
+		st.lives = Config.Player.Lives
+		st.escaped = false
+		st.eliminated = false
+		st.alive = true
+		st.battery = Config.Player.BatteryMax
+		st.stamina = Config.Player.StaminaMax
+		self:placeCharacter(player, st)
+		self:refreshLobby()
+		self:publish(st, true)
+	elseif name == Remotes.Actions.Move then
+		local sprint = not not arg
+		local crouch = not not arg2
+		if st.wantSprint ~= sprint or st.wantCrouch ~= crouch then
+			st.wantSprint = sprint
+			st.wantCrouch = crouch
+			self:applyMovement(st)
+		end
+	elseif name == "leave" then
+		st.joined = false
+		if st.hiddenLock then
+			self:unhide(player, st, true)
+		end
+		self:placeCharacter(player, st, true)
+		self:refreshLobby(true)
+	end
+end
+
+function Round:applyMovement(st)
+	local humanoid = st.humanoid
+	if not humanoid or humanoid.Health &lt;= 0 then
+		return
+	end
+	local speed
+	if st.hiddenLock then
+		speed = 0
+	elseif st.wantCrouch then
+		speed = Config.Player.CrouchSpeed
+	elseif st.wantSprint and st.stamina &gt; Config.Player.MinSprintCost then
+		speed = Config.Player.SprintSpeed
+	else
+		speed = Config.Player.WalkSpeed
+	end
+	st.appliedSpeed = speed
+	humanoid.WalkSpeed = speed
+end
+
+---------------------------------------------------------------------------
+-- prompts
+---------------------------------------------------------------------------
+
+function Round:onPrompt(player, promptObj, kind)
+	if self.phase ~= Round.Phase.Active then
+		return
+	end
+	local st = self.players[player]
+	if not st or not st.alive or st.escaped then
+		return
+	end
+	local level = self.level
+	if not level then
+		return
+	end
+	local entry = level.promptIndex and level.promptIndex[promptObj]
+	if not entry then
+		return
+	end
+
+	if entry.kind == "locker" then
+		if kind == "trigger" then
+			self:toggleLocker(player, st, entry.locker)
+		end
+		return
+	end
+
+	local pickup = entry
+	if pickup.taken then
+		return
+	end
+	if kind == "hold" then
+		-- the noise happens while you struggle, not after: that is the whole game
+		self:noise(st, Config.Noise.Interact)
+		return
+	end
+	self:takePickup(player, st, pickup)
+end
+
+function Round:takePickup(player, st, pickup)
+	self.level:takePickup(pickup)
+	self:noise(st, Config.Noise.Interact * 0.7)
+
+	if pickup.kind == "cell" then
+		self.cellsFound = self.cellsFound + 1
+		st.contributed = st.contributed + 1
+		self.stats.cells = self.stats.cells + 1
+		self:toastAll("CELL SECURED  " .. self.cellsFound .. "/" .. self.cellsNeeded, "good")
+		if self.cellsFound &gt;= self.cellsNeeded then
+			self:openGate()
+		end
+	elseif pickup.kind == "battery" then
+		st.battery = Util.clamp(st.battery + Config.Player.BatteryFromPickup, 0, Config.Player.BatteryMax)
+		self:toast(player, "SPARE CELL  +" .. Config.Player.BatteryFromPickup .. "%", "good")
+	elseif pickup.kind == "bandage" then
+		if st.humanoid then
+			st.humanoid.Health = math.min(st.humanoid.MaxHealth, st.humanoid.Health + 45)
+		end
+		self:toast(player, "BLEEDING STOPPED", "good")
+	end
+	self:publish(st)
+end
+
+function Round:openGate()
+	self.gateOpen = true
+	self.level:openGate()
+	self.root:SetAttribute("GateOpen", true)
+	self:toastAll(Config.Copy.Escaping, "good")
+	self:scare(1.6, "gate")
+	if self.entity then
+		self.entity:enroll()
+	end
+end
+
+---------------------------------------------------------------------------
+-- lockers
+---------------------------------------------------------------------------
+
+function Round:toggleLocker(player, st, locker)
+	if st.hiddenLock then
+		self:unhide(player, st, false)
+		return
+	end
+	if not st.alive or st.escaped then
+		return
+	end
+	if locker.occupied and locker.occupied ~= player then
+		self:toast(player, "SOMEONE IS IN THERE", "warn")
+		return
+	end
+	self:hide(player, st, locker)
+end
+
+function Round:hide(player, st, locker)
+	local char = st.character
+	if not char or not locker.insideCF then
+		return
+	end
+
+	st.hiddenLock = locker
+	st.hiddenSince = self.now
+	st.found = 0
+	locker.occupied = player
+	locker.prompt.ActionText = "LEAVE"
+	locker.door.Transparency = 0.2
+
+	if st.humanoid then
+		st.humanoid.PlatformStand = true
+	end
+	char:PivotTo(locker.insideCF)
+	self:setCloak(st, true)
+	self:applyMovement(st)
+	st.savedFlash = st.flashOn
+	st.flashOn = false
+	self:noise(st, Config.Noise.Locker)
+	self:publish(st, true)
+end
+
+function Round:unhide(player, st, forced)
+	local locker = st.hiddenLock
+	if not locker then
+		return
+	end
+	st.hiddenLock = nil
+	locker.occupied = nil
+	locker.prompt.ActionText = "HIDE"
+	locker.door.Transparency = 0.55
+	st.found = 0
+
+	if st.humanoid then
+		st.humanoid.PlatformStand = false
+	end
+	if st.character and locker.exitCF then
+		st.character:PivotTo(locker.exitCF)
+	end
+	self:setCloak(st, false)
+	self:applyMovement(st)
+	if not forced and st.savedFlash and st.battery &gt; 1 then
+		st.flashOn = true
+	end
+	st.savedFlash = nil
+	self:noise(st, Config.Noise.Locker)
+	self:publish(st, true)
+end
+
+--- A Hollow standing at your locker door with a hunt running will tear it off.
+function Round:houndLocks(dt)
+	for player, st in self:eachPlayer() do
+		if st.hiddenLock then
+			local hunting = self.entity and self.entity.state == "hunt" and self.entity.targetPlayer == player
+			if hunting and st.atDoor then
+				st.found = Util.clamp(st.found + dt / Config.Entity.KickInTime, 0, 1)
+				if st.found &gt;= 1 then
+					self:unhide(player, st, true)
+					self:toast(player, "FOUND", "bad")
+					if st.humanoid then
+						st.humanoid:TakeDamage(20)
+					end
+					if self.entity then
+						self.entity:beginFeed()
+					end
+				end
+			else
+				st.found = Util.clamp(st.found - dt * 0.5, 0, 1)
+			end
+		end
+	end
+end
+
+---------------------------------------------------------------------------
+-- phases
+---------------------------------------------------------------------------
+
+function Round:setPhase(nextPhase)
+	self.phase = nextPhase
+	self.phaseTime = 0
+	self.root:SetAttribute("Phase", nextPhase)
+end
+
+function Round:begin()
+	self.seedSeq = (self.seedSeq * 31 + 7919) % 2147483647
+	self.level = MapBuilder.build(self.root, { seed = self.seedSeq })
+
+	self.entity = Entity.new({ round = self, level = self.level, root = self.root })
+	self.entity:setState("dormant")
+	self.entity:reposition(22)
+
+	self.cellsFound = 0
+	self.cellsNeeded = math.max(1, #self.level.cells)
+	self.timeLeft = Config.Round.Limit
+	self.livesLost = 0
+	self.gateOpen = false
+	self.purging = false
+	self.result = nil
+	self.roundStart = self.now
+
+	self.root:SetAttribute("CellsNeeded", self.cellsNeeded)
+	self.root:SetAttribute("CellsFound", 0)
+	self.root:SetAttribute("GateOpen", false)
+	self.root:SetAttribute("Purge", false)
+	self.root:SetAttribute("Result", "")
+
+	local self2 = self
+	self.padConn = self.level.pad.Touched:Connect(function(other)
+		local model = other:FindFirstAncestorOfClass("Model")
+		if not model then
+			return
+		end
+		local player = Players:GetPlayerFromCharacter(model)
+		if player then
+			self2:escape(player)
+		end
+	end)
+
+	for player, st in self:eachPlayer() do
+		if st.joined then
+			st.lives = Config.Player.Lives
+			st.escaped = false
+			st.eliminated = false
+			st.contributed = 0
+			st.alive = true
+			st.battery = Config.Player.BatteryMax
+			st.stamina = Config.Player.StaminaMax
+			st.flashOn = true
+			st.found = 0
+			st.invulnUntil = self.now + 3
+			st.noiseIn = 0
+			if not st.character or not st.character.Parent then
+				self:loadCharacter(player)
+			else
+				self:setCloak(st, false)
+				self:placeCharacter(player, st)
+			end
+		else
+			self:placeCharacter(player, st, true)
+		end
+		self:publish(st, true)
+	end
+
+	self.stats.rounds = self.stats.rounds + 1
+	self:setPhase(Round.Phase.Ingress)
+	self.remotes:toAll("Fade", "black")
+	self:toastAll(Config.Copy.Objective .. "  x" .. self.cellsNeeded, "info")
+	self:refreshLobby()
+end
+
+function Round:activate()
+	self:setPhase(Round.Phase.Active)
+
+	-- Anyone whose body finished loading while the phase was still intermission was put
+	-- in the staging lift by default. Deploy them before the Hollow starts hunting.
+	for player, st in self:eachPlayer() do
+		if st.joined and st.needsDeploy and st.alive and not st.escaped then
+			self:placeCharacter(player, st)
+		end
+	end
+	self.remotes:toAll("Fade", "clear")
+	if self.entity then
+		self.entity:setState("patrol")
+	end
+	for _, st in self:eachPlayer() do
+		self:publish(st, true)
+	end
+end
+
+function Round:update(dt)
+	dt = math.min(dt, MAX_DT)
+	self.now = self.now + dt
+	self.phaseTime = self.phaseTime + dt
+
+	local phase = self.phase
+
+	if phase == Round.Phase.Intermission then
+		self.countdown = self.countdown - dt
+		if self.countdown &lt;= 0 then
+			if self:joinedCount() &gt;= Config.Round.MinPlayerCount then
+				self:begin()
+			else
+				self.countdown = 5
+			end
+		end
+		self:refreshLobby()
+		self:publishTick(dt)
+		return
+	end
+
+	if phase == Round.Phase.Ingress then
+		if self.level then
+			self.level:tick(self.now)
+		end
+		if self.entity then
+			self.entity:advance(dt)
+		end
+		if self.phaseTime &gt;= Config.Round.Ingress then
+			self:activate()
+		end
+		self:publishTick(dt)
+		return
+	end
+
+	if phase == Round.Phase.Resolving then
+		if self.level then
+			self.level:tick(self.now)
+		end
+		if self.phaseTime &gt;= Config.Round.ResolveTime then
+			self:reset()
+		end
+		self:publishTick(dt)
+		return
+	end
+
+	-- active
+	if self.timeLeft &gt; 0 then
+		self.timeLeft = self.timeLeft - dt
+		if not self.purging and self.timeLeft &lt;= Config.Round.PurgeWarn then
+			self:startPurge()
+		end
+		if self.timeLeft &lt;= 0 then
+			self:purge()
+			return
+		end
+	end
+
+	for player, st in self:eachPlayer() do
+		self:updatePlayer(st, dt)
+	end
+
+	self.thinkIn = self.thinkIn - dt
+	if self.entity then
+		if self.thinkIn &lt;= 0 then
+			self.thinkIn = Think
+			self.entity:tick(Think)
+		end
+		self.entity:advance(dt)
+		self:houndLocks(dt)
+	end
+
+	if self.level then
+		self.level:tick(self.now)
+	end
+
+	self:checkEnd()
+	self:publishTick(dt)
+end
+
+function Round:updatePlayer(st, dt)
+	local player = st.player
+	local char = st.character
+	if not player or not player.Parent then
+		return
+	end
+	if not st.joined then
+		-- still in staging, out of the Hollow's world entirely
+		st.dread = 0
+		st.alive = true
+		return
+	end
+	if not char or not char.Parent then
+		st.alive = false
+		return
+	end
+	if st.escaped then
+		return
+	end
+
+	st.timeIn = st.timeIn + dt
+
+	local root = st.root or char:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+	st.root = root
+	st.pos = root.Position
+	local look = root.CFrame.LookVector
+	local lx, lz = look.X, look.Z
+	local lm = math.sqrt(lx * lx + lz * lz)
+	if lm &gt; 0.001 then
+		st.look = Vector3.new(lx / lm, 0, lz / lm)
+	end
+
+	local gx, gy = self.level:tileOf(root.Position)
+	gx, gy = self:nearestWalkable(self.level.maze, gx, gy)
+	st.tx, st.ty = gx, gy
+
+	local vel = root.AssemblyLinearVelocity
+	st.speed = math.sqrt(vel.X * vel.X + vel.Z * vel.Z)
+
+	if st.hiddenLock then
+		st.mode = "hidden"
+	elseif st.speed &gt; 20 then
+		st.mode = "sprint"
+	elseif st.speed &gt; 11 then
+		st.mode = "walk"
+	elseif st.speed &gt; 1.5 then
+		st.mode = "crouch"
+	else
+		st.mode = "still"
+	end
+
+	-- What the Hollow can hear.
+	if not st.hiddenLock then
+		if st.mode == "sprint" then
+			st.noiseIn = st.noiseIn - dt
+			if st.noiseIn &lt;= 0 then
+				st.noiseIn = Config.Noise.JogLoop
+				self:noise(st, Config.Noise.Sprint)
+			end
+		elseif st.mode == "walk" then
+			st.noiseIn = st.noiseIn - dt
+			if st.noiseIn &lt;= 0 then
+				st.noiseIn = 0.85
+				self:noise(st, Config.Noise.Walk)
+			end
+		end
+		if self.entity and self.entity.state == "hunt" then
+			-- it is already on you; it does not need to hear you any more
+			st.noiseIn = math.max(st.noiseIn, 0.2)
+		end
+	end
+
+	-- Stamina.
+	local moving = st.mode ~= "still"
+	if st.hiddenLock then
+		st.stamina = Util.clamp(st.stamina - Config.Player.HoldBreathDrain * dt, 0, Config.Player.StaminaMax)
+	elseif st.mode == "sprint" and st.wantSprint then
+		st.stamina = Util.clamp(st.stamina - Config.Player.StaminaDrain * dt, 0, Config.Player.StaminaMax)
+		st.sprintLock = Config.Player.StaminaRecoverLock
+	else
+		st.sprintLock = math.max(0, st.sprintLock - dt)
+		if st.sprintLock &lt;= 0 then
+			local bonus = st.mode == "crouch" and (1 + Config.Player.CrouchRegenBonus / 100) or 1
+			st.stamina = Util.clamp(st.stamina + Config.Player.StaminaRegen * bonus * dt, 0, Config.Player.StaminaMax)
+		end
+	end
+
+	-- Battery.
+	if st.flashOn then
+		st.battery = Util.clamp(st.battery - Config.Player.BatteryDrain * dt, 0, Config.Player.BatteryMax)
+		if st.battery &lt;= 0 then
+			st.flashOn = false
+			self:toast(player, "BATTERY DEAD - FIND A SPARE CELL", "bad")
+		end
+	end
+
+	self:applyMovement(st)
+
+	-- Being pinned inside a locker has to be re-asserted: Roblox physics is eager to
+	-- push a character out of a shell it did not author.
+	if st.hiddenLock then
+		local locker = st.hiddenLock
+		if not locker.occupied or locker.occupied ~= player then
+			st.hiddenLock = nil
+			self:setCloak(st, false)
+			if st.humanoid then
+				st.humanoid.PlatformStand = false
+			end
+			self:applyMovement(st)
+		else
+			local target = locker.insideCF
+			if (root.Position - target.Position).Magnitude &gt; 0.35 then
+				char:PivotTo(target)
+			end
+			root.AssemblyLinearVelocity = Vector3.zero
+		end
+	end
+
+	-- Objective guidance: a bearing and a proximity read, so the maze is frightening
+	-- but never unwinnable.
+	local signalPos, signalLabel = self:objectiveFor(st)
+	if signalPos then
+		local to = signalPos - st.pos
+		local right = st.look:Cross(Vector3.new(0, 1, 0))
+		local ahead = st.look
+		st.bearing = math.deg(math.atan2(to.X * right.X + to.Z * right.Z, to.X * ahead.X + to.Z * ahead.Z))
+		local dist = math.sqrt(to.X * to.X + to.Z * to.Z)
+		st.distance = dist
+		st.signal = Util.clamp(1 - dist / 220, 0, 1)
+		st.signalLabel = signalLabel
+	else
+		st.signal = 0
+		st.distance = nil
+	end
+
+	self:safetyCheck(st)
+end
+
+function Round:objectiveFor(st)
+	if self.gateOpen then
+		return self.level.escapeCFrame.Position, "gate"
+	end
+	local best, bestDist
+	for _, pickup in ipairs(self.level.cells) do
+		if not pickup.taken and pickup.part then
+			local d = (pickup.part.Position - st.pos).Magnitude
+			if d &lt; (bestDist or math.huge) then
+				best, bestDist = pickup.part.Position, d
+			end
+		end
+	end
+	return best, "cell"
+end
+
+--- Falling out of the world should never be a way to lose a life.
+function Round:safetyCheck(st)
+	local pos = st.pos
+	if not pos then
+		return
+	end
+	local lobbyY = self.lobby and self.lobby.y or -120
+	if pos.Y &lt; lobbyY - 140 or pos.Y &gt; Config.World.RoofHeight + 90 then
+		self:placeCharacter(st.player, st)
+	end
+end
+
+function Round:noise(st, radius)
+	if self.entity and st.pos then
+		self.entity:hear(st.pos, radius)
+	end
+end
+
+function Round:startPurge()
+	self.purging = true
+	self.root:SetAttribute("Purge", true)
+	if self.level then
+		self.level:setPurge(true)
+	end
+	self:toastAll(string.format(Config.Copy.PurgeWarn, Util.formatTime(Config.Round.PurgeWarn)), "bad")
+	self.remotes:toAll("Sound", "Alarm")
+end
+
+function Round:purge()
+	for _, st in self:eachPlayer() do
+		if not st.escaped and st.alive then
+			st.eliminated = true
+			st.alive = false
+			if st.humanoid then
+				st.humanoid.Health = 0
+			end
+		end
+	end
+	self:finish("purged")
+end
+
+function Round:escape(player)
+	local st = self.players[player]
+	if not st or st.escaped or not self.gateOpen or self.phase ~= Round.Phase.Active then
+		return
+	end
+	if not st.alive or st.eliminated then
+		return
+	end
+	st.escaped = true
+	st.alive = false
+	st.joined = true
+	st.dread = 0
+	if st.hiddenLock then
+		self:unhide(player, st, true)
+	end
+	self.stats.escapes = self.stats.escapes + 1
+	local elapsed = self.now - (self.roundStart or self.now)
+	if self.stats.best == nil or elapsed &lt; self.stats.best then
+		self.stats.best = elapsed
+	end
+	self:placeCharacter(player, st, true)
+	self:toastAll(player.Name .. " IS OUT", "good")
+	self.remotes:toClient(player, "Fade", "white")
+	self.remotes:toClient(player, "Result", {
+		kind = "escaped",
+		cells = st.contributed,
+		lives = st.lives,
+		time = math.floor(elapsed),
+		rounds = self.stats.rounds,
+	})
+	self:publish(st, true)
+	self:checkEnd()
+end
+
+function Round:checkEnd()
+	if self.phase ~= Round.Phase.Active then
+		return
+	end
+	local live, out = 0, 0
+	for _, st in self:eachPlayer() do
+		if st.joined then
+			if st.escaped then
+				out = out + 1
+			elseif st.alive and not st.eliminated then
+				live = live + 1
+			end
+		end
+	end
+	if live == 0 then
+		self:finish(out &gt; 0 and "partial" or "consumed")
+	end
+end
+
+function Round:finish(kind)
+	if self.phase ~= Round.Phase.Active then
+		return
+	end
+	self.result = kind
+	self.root:SetAttribute("Result", kind)
+	self:setPhase(Round.Phase.Resolving)
+
+	local escaped = 0
+	local total = 0
+	for _, st in self:eachPlayer() do
+		if st.joined then
+			total = total + 1
+			if st.escaped then
+				escaped = escaped + 1
+			end
+		end
+		self.remotes:toClient(st.player, "Result", {
+			kind = st.escaped and "escaped" or (st.eliminated and "consumed" or kind),
+			cells = st.contributed,
+			lives = st.lives,
+			time = math.floor(st.timeIn),
+			escaped = st.escaped,
+			rounds = self.stats.rounds,
+			best = self.stats.best,
+		})
+	end
+
+	self:toastAll(kind == "purged" and "SUBLEVEL SEALED" or (escaped &gt; 0 and "SIGNAL RECOVERED" or "NO SIGNAL"), escaped &gt; 0 and "good" or "bad")
+	self.remotes:toAll("Sound", escaped &gt; 0 and "Win" or "Lose")
+	self:refreshLobby()
+end
+
+function Round:reset()
+	if self.padConn then
+		self.padConn:Disconnect()
+		self.padConn = nil
+	end
+	if self.entity then
+		self.entity:destroy()
+		self.entity = nil
+	end
+	if self.level then
+		self.level:destroy()
+		self.level = nil
+	end
+
+	for player, st in self:eachPlayer() do
+		st.hiddenLock = nil
+		st.escaped = false
+		st.eliminated = false
+		st.alive = true
+		st.lives = Config.Player.Lives
+		st.battery = Config.Player.BatteryMax
+		st.stamina = Config.Player.StaminaMax
+		st.flashOn = false
+		st.dread = 0
+		st.found = 0
+		st.contributed = 0
+		st.timeIn = 0
+		if st.humanoid then
+			pcall(function()
+				st.humanoid.PlatformStand = false
+			end)
+		end
+		self:setCloak(st, false)
+		if not st.character or not st.character.Parent then
+			self:loadCharacter(player)
+		end
+		self:placeCharacter(player, st)
+		self:publish(st, true)
+	end
+
+	self.cellsFound = 0
+	self.gateOpen = false
+	self.purging = false
+	self.countdown = Config.Round.Intermission
+	self.root:SetAttribute("CellsFound", 0)
+	self.root:SetAttribute("GateOpen", false)
+	self.root:SetAttribute("Purge", false)
+	self:setPhase(Round.Phase.Intermission)
+	self.remotes:toAll("Fade", "clear")
+	self:refreshLobby()
+end
+
+---------------------------------------------------------------------------
+-- messaging
+---------------------------------------------------------------------------
+
+function Round:toast(player, text, kind)
+	if player then
+		self.remotes:toClient(player, "Toast", text, kind or "info")
+	else
+		self:toastAll(text, kind)
+	end
+end
+
+function Round:toastAll(text, kind)
+	self.remotes:toAll("Toast", text, kind or "info")
+end
+
+--- Jump-scare sting. magnitude 0..1, kind for flavour.
+function Round:scare(magnitude, kind, onlyPlayer)
+	local payload = { m = Util.clamp(magnitude, 0, 1), kind = kind }
+	if onlyPlayer then
+		self.remotes:toClient(onlyPlayer, "Scare", payload)
+	else
+		self.remotes:toAll("Scare", payload)
+	end
+end
+
+function Round:revealFlash(player)
+	self.remotes:toClient(player, "Reveal")
+end
+
+function Round:grab(player, st, entity)
+	if self.phase ~= Round.Phase.Active or not st.alive or st.escaped then
+		return
+	end
+	if self.now &lt; st.invulnUntil then
+		return
+	end
+
+	entity:beginFeed()
+	st.invulnUntil = self.now + Config.Player.InvulnAfterGrab
+	st.grabs = st.grabs + 1
+
+	if st.root then
+		local push = st.pos - entity.pos
+		local flat = Vector3.new(push.X, 0, push.Z)
+		if flat.Magnitude &gt; 0.2 then
+			st.root.AssemblyLinearVelocity = flat.Unit * 44 + Vector3.new(0, 16, 0)
+		end
+	end
+
+	local health = st.humanoid and st.humanoid.Health or 100
+	if st.humanoid then
+		st.humanoid:TakeDamage(Config.Player.GrabDamage)
+	end
+
+	self.remotes:toClient(player, "Hit", { health = health, dread = 1 })
+	self.remotes:toClient(player, "Scare", { m = 1, kind = "grab" })
+	self:toast(player, Config.Copy.Found, "bad")
+	self:publish(st, true)
+end
+
+---------------------------------------------------------------------------
+-- replication
+---------------------------------------------------------------------------
+
+function Round:publish(st, force)
+	local player = st.player
+	if not player or not player.Parent then
+		return
+	end
+	local stateName = "lobby"
+	if not st.joined then
+		stateName = "menu"
+	elseif self.phase == Round.Phase.Active then
+		if st.escaped then
+			stateName = "escaped"
+		elseif not st.alive then
+			stateName = st.eliminated and "consumed" or "down"
+		else
+			stateName = "active"
+		end
+	elseif self.phase == Round.Phase.Ingress then
+		stateName = "ingress"
+	elseif self.phase == Round.Phase.Resolving then
+		stateName = "resolving"
+	end
+
+	Attributes.set(player, "State", stateName)
+	Attributes.set(player, "Lives", st.lives, 0.5)
+	Attributes.set(player, "Battery", st.battery, force and 0 or 0.4)
+	Attributes.set(player, "Stamina", st.stamina, force and 0 or 0.8)
+	Attributes.set(player, "Dread", st.dread, force and 0 or 0.03)
+	Attributes.set(player, "FlashOn", st.flashOn)
+	Attributes.set(player, "Hidden", st.hiddenLock ~= nil)
+	Attributes.set(player, "Found", st.found, force and 0 or 0.02)
+	Attributes.set(player, "Invuln", self.now &lt; st.invulnUntil)
+	Attributes.set(player, "Health", st.humanoid and math.floor(st.humanoid.Health) or 100, 0.5)
+	Attributes.set(player, "Cells", st.contributed, 0.5)
+	Attributes.set(player, "Signal", st.signal or 0, force and 0 or 0.02)
+	Attributes.set(player, "Bearing", st.bearing or 0, force and 0 or 2)
+	Attributes.set(player, "Distance", st.distance or 0, force and 0 or 1.5)
+	Attributes.set(player, "SignalKind", st.signalLabel or "")
+end
+
+function Round:publishTick(dt)
+	self.publishIn = self.publishIn - dt
+	if self.publishIn &lt;= 0 then
+		self.publishIn = 1 / 12
+		for _, st in self:eachPlayer() do
+			self:publish(st)
+		end
+	end
+
+	self.statIn = self.statIn - dt
+	if self.statIn &lt;= 0 then
+		self.statIn = 0.25
+		local alive, escaped = 0, 0
+		for _, st in self:eachPlayer() do
+			if st.joined then
+				if st.escaped then
+					escaped = escaped + 1
+				elseif st.alive and not st.eliminated then
+					alive = alive + 1
+				end
+			end
+		end
+		Attributes.set(self.root, "Countdown", math.max(0, math.ceil(self.countdown)), 0.5)
+		Attributes.set(self.root, "TimeLeft", math.max(0, math.ceil(self.timeLeft)), 0.5)
+		Attributes.set(self.root, "CellsFound", self.cellsFound, 0.5)
+		Attributes.set(self.root, "Alive", alive, 0.5)
+		Attributes.set(self.root, "Escaped", escaped, 0.5)
+		Attributes.set(self.root, "Waiting", self:joinedCount(), 0.5)
+		Attributes.set(self.root, "Phase", self.phase)
+	end
+end
+
+--- The one surface every waiting player reads, in world space.
+function Round:refreshLobby(force)
+	if not force and self.now &lt; (self.boardAt or 0) + 1 then
+		return
+	end
+	self.boardAt = self.now
+	if not self.lobby or not self.lobby.boardBody then
+		return
+	end
+
+	local lines = {}
+	if self.phase == Round.Phase.Intermission then
+		lines[#lines + 1] = "LIFT IN " .. math.max(0, math.ceil(self.countdown)) .. "s"
+		lines[#lines + 1] = "CREW READY: " .. self:joinedCount() .. " / " .. self:participantCount()
+		lines[#lines + 1] = "OBJECTIVE: RECOVER " .. self.cellsNeeded .. " IGNITER CELLS"
+		lines[#lines + 1] = "TIME LIMIT " .. Util.formatTime(Config.Round.Limit) .. "   LIVES " .. Config.Player.Lives
+	else
+		lines[#lines + 1] = "RUN IN PROGRESS"
+		lines[#lines + 1] = "CELLS " .. self.cellsFound .. " / " .. self.cellsNeeded
+		lines[#lines + 1] = "INSIDE " .. self.root:GetAttribute("Alive") .. "   OUT " .. self.root:GetAttribute("Escaped")
+		if self.gateOpen then
+			lines[#lines + 1] = "GATE OPEN - EXTRACT"
+		end
+	end
+	lines[#lines + 1] = string.format("ROUNDS %d   ESCAPES %d   LOST %d", self.stats.rounds, self.stats.escapes, self.stats.deaths)
+	if self.stats.best then
+		lines[#lines + 1] = "BEST EXFIL " .. Util.formatTime(self.stats.best)
+	end
+	self.lobby.boardBody.Text = table.concat(lines, "\n")
+end
+
+return Round
+</ProtectedString></Properties></Item></Item><Item class="StarterPlayer" referent="RBX18"><Properties></Properties><Item class="StarterPlayerScripts" referent="RBX17"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="ModuleScript" referent="RBX12"><Properties><string name="Name">Effects</string><ProtectedString name="Source">--[[
+	Effects - everything between the raw render and your eyeball.
+
+	Post-effect instances are parented to the Camera rather than Lighting on purpose:
+	anything a client puts in Lighting or SoundService replicates to the server and
+	then to everybody, which would apply one player's panic blur to the whole crew.
+	The Camera is player-owned, so its children stay local.
+]]
+
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+--[[ Shared modules live in ReplicatedStorage.Blacksite. Addressed through the service rather
+     than script.Parent.Parent, because these folders are siblings, not ancestors. ]]
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("Blacksite")
+local Config = require(shared:WaitForChild("Config"))
+local Attributes = require(shared:WaitForChild("Attributes"))
+local Util = require(shared:WaitForChild("Util"))
+
+local Effects = {}
+Effects.__index = Effects
+
+local noise = math.noise or function()
+	return 0
+end
+
+local function vignetteSequence(strength)
+	return NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.4, 1 - strength * 0.12),
+		NumberSequenceKeypoint.new(0.7, 1 - strength * 0.58),
+		NumberSequenceKeypoint.new(1, 1 - strength),
+	})
+end
+
+function Effects.new(deps)
+	local self = setmetatable({}, Effects)
+	self.player = deps.player
+	self.root = deps.root
+	self.camera = deps.camera
+	self.shake = 0
+	self.time = 0
+	self.lighting = Lighting
+	self.barSeeds = {}
+
+	---------------------------------------------------------------------
+	-- post effects (local: parented to the camera)
+	---------------------------------------------------------------------
+	local container = deps.container or Workspace.CurrentCamera or Workspace
+
+	self.color = Instance.new("ColorCorrectionEffect")
+	self.color.Name = "BlacksiteGrade"
+	self.color.Brightness = -0.04
+	self.color.Contrast = 0.24
+	self.color.Saturation = -0.32
+	self.color.Tint = Color3.fromRGB(128, 128, 128)
+	self.color.Parent = container
+
+	self.bloom = Instance.new("BloomEffect")
+	self.bloom.Name = "BlacksiteBloom"
+	self.bloom.Intensity = 0.5
+	self.bloom.Size = 30
+	self.bloom.Threshold = 0.82
+	self.bloom.Parent = container
+
+	self.blur = Instance.new("BlurPostEffect")
+	self.blur.Name = "BlacksiteBlur"
+	self.blur.Size = 0
+	self.blur.Parent = container
+
+	---------------------------------------------------------------------
+	-- overlays
+	---------------------------------------------------------------------
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "BlacksiteOverlay"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 5
+	gui.Parent = deps.playerGui
+
+	self.vignette = Instance.new("Frame")
+	self.vignette.Name = "Vignette"
+	self.vignette.Size = UDim2.fromScale(1, 1)
+	self.vignette.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	self.vignette.BackgroundTransparency = 0
+	self.vignette.BorderSizePixel = 0
+	self.vignette.Parent = gui
+	self.vignetteGrad = Instance.new("UIGradient")
+	self.vignetteGrad.Type = Enum.GradientType.Radial
+	self.vignetteGrad.Transparency = vignetteSequence(0.2)
+	self.vignetteGrad.Parent = self.vignette
+
+	self.tint = Instance.new("Frame")
+	self.tint.Name = "Tint"
+	self.tint.Size = UDim2.fromScale(1, 1)
+	self.tint.BackgroundColor3 = Color3.fromRGB(120, 8, 8)
+	self.tint.BackgroundTransparency = 1
+	self.tint.BorderSizePixel = 0
+	self.tint.Parent = gui
+
+	self.dark = Instance.new("Frame")
+	self.dark.Name = "Fade"
+	self.dark.Size = UDim2.fromScale(1, 1)
+	self.dark.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	self.dark.BackgroundTransparency = 0
+	self.dark.BorderSizePixel = 0
+	self.dark.Parent = gui
+
+	-- VHS-ish interference: a handful of moving bars, no textures needed.
+	self.bars = {}
+	for i = 1, Config.Effects.GrainBars do
+		local bar = Instance.new("Frame")
+		bar.Size = UDim2.new(1, 0, 0, 2)
+		bar.Position = UDim2.new(0, 0, math.random(), 0)
+		bar.BackgroundColor3 = Color3.fromRGB(190, 200, 205)
+		bar.BackgroundTransparency = 1
+		bar.BorderSizePixel = 0
+		bar.Parent = gui
+		self.bars[i] = bar
+		self.barSeeds[i] = math.random(1, 999)
+	end
+
+	-- Title card: the "02:14 AM" beat that sells the descent.
+	self.card = Instance.new("TextLabel")
+	self.card.Name = "Card"
+	self.card.BackgroundTransparency = 1
+	self.card.Size = UDim2.new(1, 0, 0, 60)
+	self.card.Position = UDim2.new(0, 0, 0.36, 0)
+	self.card.Font = Enum.Font.Code
+	self.card.TextSize = 30
+	self.card.TextColor3 = Color3.fromRGB(214, 218, 220)
+	self.card.TextXAlignment = Enum.TextXAlignment.Center
+	self.card.TextTransparency = 1
+	self.card.TextStrokeTransparency = 0.7
+	self.card.Parent = gui
+
+	-- The place starts faded to black and fades up on load, so the lobby reveal reads
+	-- as an arrival rather than a pop.
+	self.fadeTarget = 1
+	self.fadeSpeed = 0.9
+
+	return self
+end
+
+---------------------------------------------------------------------------
+-- public nudges
+---------------------------------------------------------------------------
+
+function Effects:kick(magnitude)
+	self.shake = math.min(2.4, self.shake + magnitude)
+end
+
+function Effects:tintPulse(color, alpha, seconds)
+	self.tint.BackgroundColor3 = color
+	self.tint.BackgroundTransparency = 1 - alpha
+	TweenService:Create(self.tint, TweenInfo.new(seconds or 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 1,
+	}):Play()
+end
+
+function Effects:scare(payload)
+	local m = payload and payload.m or 0.5
+	local kind = payload and payload.kind
+	self:kick(0.5 + m)
+	if kind == "grab" then
+		self:tintPulse(Color3.fromRGB(120, 6, 6), 0.62, 0.75)
+		self.hitPulse = 1
+	elseif kind == "blink" then
+		self:tintPulse(Color3.fromRGB(4, 4, 6), 0.85, 0.35)
+		self.dropOut = 0.35
+	elseif kind == "gate" then
+		self:tintPulse(Color3.fromRGB(40, 200, 140), 0.3, 0.9)
+	else
+		self:tintPulse(Color3.fromRGB(90, 6, 6), 0.35 * m, 0.5)
+	end
+end
+
+function Effects:hit()
+	self:tintPulse(Color3.fromRGB(120, 10, 10), 0.5, 0.7)
+	self:kick(1.1)
+	self.hitPulse = 1
+end
+
+--- Fade choreography for the lift.
+function Effects:fade(kind)
+	if kind == "black" then
+		self.dark.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		self.fadeTarget = 0
+		self.fadeSpeed = 7
+	elseif kind == "clear" then
+		self.dark.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		self.fadeTarget = 1
+		self.fadeSpeed = 1.15
+	elseif kind == "white" then
+		self.dark.BackgroundColor3 = Color3.fromRGB(232, 238, 238)
+		self.fadeTarget = 0
+		self.fadeSpeed = 12
+		task.delay(0.3, function()
+			self.dark.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+			self.fadeTarget = 1
+			self.fadeSpeed = 1.7
+		end)
+	end
+end
+
+function Effects:showCard(text, seconds)
+	self.card.Text = text or ""
+	self.card.TextTransparency = 0
+	task.delay(seconds or 2.6, function()
+		TweenService:Create(self.card, TweenInfo.new(0.7), { TextTransparency = 1 }):Play()
+	end)
+end
+
+---------------------------------------------------------------------------
+-- per-frame
+---------------------------------------------------------------------------
+
+function Effects:update(dt)
+	self.time = self.time + dt
+	local player = self.player
+	local dread = Attributes.num(player, "Dread", 0)
+	local battery = Attributes.num(player, "Battery", 100)
+	local hidden = Attributes.get(player, "Hidden", false)
+	local purge = Attributes.get(self.root, "Purge", false)
+	local phase = Attributes.get(self.root, "Phase", "intermission")
+
+	-- shake decays; dread keeps a permanent low rumble underneath it
+	self.shake = math.max(0, self.shake - dt * Config.Camera.ShakeDecay)
+	self.shake = math.max(self.shake, dread * 0.055)
+	self.hitPulse = math.max(0, (self.hitPulse or 0) - dt * 2.2)
+	self.dropOut = math.max(0, (self.dropOut or 0) - dt)
+
+	-- grade
+	local grade = self.color
+	grade.Contrast = 0.24 + dread * 0.4 + (purge and 0.1 or 0)
+	grade.Saturation = -0.32 - dread * 0.3
+	local thump = math.sin(self.time * (2.2 + dread * 5))
+	grade.Brightness = -0.04 + thump * dread * 0.05 - (hidden and 0.05 or 0)
+	if purge then
+		grade.Tint = Color3.fromRGB(150, 108, 104)
+	else
+		grade.Tint = Color3.fromRGB(128, 128, 128)
+	end
+
+	-- bloom: the cells and the eyes are the only clean light in this place
+	self.bloom.Intensity = 0.45 + dread * 0.55 + (self.dropOut &gt; 0 and 0.6 or 0)
+
+	-- blur: vision tunnels as it closes in, and while you hold still in a locker
+	local target = dread * Config.Effects.BlurMax + (hidden and 5 or 0)
+	if phase == "intermission" then
+		target = 0
+	end
+	self.blur.Size = Util.damp(self.blur.Size, target, 0.24, dt)
+
+	-- vignette
+	local vign = Util.clamp(0.16 + dread * Config.Effects.VignetteMax, 0, 1)
+	if math.abs(vign - (self.lastVign or -1)) &gt; 0.02 then
+		self.lastVign = vign
+		self.vignetteGrad.Transparency = vignetteSequence(vign)
+	end
+
+	-- interference bars
+	local grain = Util.clamp((dread - 0.2) * 1.4 + (battery &lt; Config.Light.FlickerStart and 0.12 or 0) + (self.dropOut or 0), 0, 1)
+	if grain &gt; 0.01 then
+		for i, bar in ipairs(self.bars) do
+			local seed = self.barSeeds[i]
+			local n = noise(seed, self.time * (1.6 + grain * 5), 0.5)
+			bar.BackgroundTransparency = 1 - grain * (0.28 + 0.4 * math.abs(n))
+			bar.Position = UDim2.new(0, 0, (n * 0.5 + 0.5), 0)
+			bar.Size = UDim2.new(1, 0, 0, 1 + math.floor(math.abs(noise(seed + 4, self.time * 3, 0)) * 4))
+		end
+	else
+		if not self.barsHidden then
+			self.barsHidden = true
+			for _, bar in ipairs(self.bars) do
+				bar.BackgroundTransparency = 1
+			end
+		end
+	end
+	if grain &gt; 0.01 then
+		self.barsHidden = false
+	end
+
+	-- fog tightens with panic, which is the cheapest way to make the flashlight feel
+	-- like the only thing between you and a black screen. Lighting is one of the
+	-- filtered services, so these writes stay local to this client.
+	local lighting = self.lighting
+	local fog = Config.Effects.FogEnd - dread * 26
+	if math.abs((self.lastFog or 0) - fog) &gt; 2 then
+		self.lastFog = fog
+		lighting.FogEnd = fog
+		lighting.FogStart = Config.Effects.FogStart
+	end
+	if purge then
+		lighting.FogColor = Config.Effects.PurgeFogColor
+	else
+		lighting.FogColor = Config.Effects.FogColor
+	end
+
+	-- fade (BackgroundTransparency: 1 = clear screen, 0 = fully covered)
+	if self.fadeTarget then
+		local current = self.dark.BackgroundTransparency
+		local goal = self.fadeTarget
+		local value = current + (goal - current) * math.min(1, dt * self.fadeSpeed)
+		if math.abs(value - goal) &lt; 0.02 then
+			value = goal
+			self.fadeTarget = nil
+		end
+		self.dark.BackgroundTransparency = value
+	end
+end
+
+function Effects:destroy()
+	for _, inst in ipairs({ self.color, self.bloom, self.blur }) do
+		if inst then
+			inst:Destroy()
+		end
+	end
+end
+
+return Effects
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX13"><Properties><string name="Name">Flashlight</string><ProtectedString name="Source">--[[
+	Flashlight - a beam that is also a resource, a weapon the monster can see, and
+	the only thing between you and a black screen.
+
+	Implementation notes:
+	  * the light lives on a client-created Part in Workspace. Instances a client
+		creates are not replicated under FilteringEnabled, so this is a private light
+		that still lights the shared, server-authored maze - which is exactly what a
+		flashlight is.
+	  * it follows workspace.CurrentCamera rather than the Head, so the beam goes where
+		you look in first person and stays usable in third person.
+	  * Enabled is driven by the replicated FlashOn attribute. The server owns the
+		battery, because the Hollow reacts to your beam and that cannot be client-side.
+]]
+
+local Workspace = game:GetService("Workspace")
+
+--[[ Shared modules live in ReplicatedStorage.Blacksite. Addressed through the service rather
+     than script.Parent.Parent, because these folders are siblings, not ancestors. ]]
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("Blacksite")
+local Config = require(shared:WaitForChild("Config"))
+local Attributes = require(shared:WaitForChild("Attributes"))
+local Util = require(shared:WaitForChild("Util"))
+
+local Flashlight = {}
+Flashlight.__index = Flashlight
+
+local noise = math.noise or function(a, b)
+	return math.sin((a or 0) * 3.1 + (b or 0) * 11.7)
+end
+
+function Flashlight.new(deps)
+	local self = setmetatable({}, Flashlight)
+	self.player = deps.player
+	self.camera = deps.camera
+	self.time = 0
+	self.strength = 0
+
+	local part = Instance.new("Part")
+	part.Name = "BlacksiteLight"
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Transparency = 1
+	part.Size = Vector3.new(0.5, 0.5, 0.5)
+	part.Massless = true
+	part.Position = Vector3.new(0, -1000, 0)
+	part.Parent = Workspace
+	self.part = part
+
+	self.spot = Instance.new("SpotLight")
+	self.spot.Name = "Beam"
+	self.spot.Face = Vector3.new(0, 0, -1)
+	self.spot.Angle = Config.Light.SpotAngle
+	self.spot.Range = Config.Light.SpotRange
+	self.spot.Brightness = Config.Light.SpotBrightness
+	self.spot.Color = Config.Light.SpotColor
+	self.spot.Enabled = false
+	self.spot.Parent = part
+	pcall(function()
+		self.spot.ShadowEnable = true
+	end)
+
+	-- A whisper of personal light so the beam is not the only thing you own: hands,
+	-- feet and the floor immediately under you stay just legible.
+	self.point = Instance.new("PointLight")
+	self.point.Name = "Glow"
+	self.point.Range = Config.Light.PointRange
+	self.point.Brightness = 0
+	self.point.Color = Color3.fromRGB(150, 160, 170)
+	self.point.Shadows = false
+	self.point.Parent = part
+
+	return self
+end
+
+--- Flicker curve: the beam is healthy until the cell gets low, then it starts to beg.
+function Flashlight:flicker(battery, dread)
+	local low = 1
+	if battery &lt; Config.Light.FlickerStart then
+		local t = 1 - battery / Config.Light.FlickerStart
+		low = 1 - t * 0.72
+		local stutter = noise(self.time * (2.4 + t * 9), battery * 0.1, 0)
+		low = low * (0.62 + 0.38 * math.abs(stutter))
+		if battery &lt; Config.Light.FlickerDeath and stutter &gt; 0.35 then
+			low = 0
+		end
+	end
+
+	-- the beam is a living thing when it is close; that is the whole horror beat
+	local fear = 1 - dread * 0.28 * (0.5 + 0.5 * noise(self.time * 5.5, dread * 3, 1))
+	return Util.clamp(low * fear, 0, 1)
+end
+
+function Flashlight:update(dt)
+	self.time = self.time + dt
+
+	local camera = self.camera
+	if not camera or not camera.Parent then
+		return
+	end
+
+	self.part.CFrame = camera.CFrame
+
+	local player = self.player
+	local wantOn = Attributes.get(player, "FlashOn", false)
+	local battery = Attributes.num(player, "Battery", 0)
+	local dread = Attributes.num(player, "Dread", 0)
+	local hidden = Attributes.get(player, "Hidden", false)
+	local phase = Attributes.get(Workspace:FindFirstChild("BlacksiteRoot") or camera, "Phase", "active")
+
+	local on = wantOn and battery &gt; 0 and not hidden
+	local target = on and 1 or 0
+	self.strength = Util.damp(self.strength, target, 0.06, dt)
+
+	local level = self:flicker(battery, dread) * self.strength
+	self.spot.Enabled = self.strength &gt; 0.02
+	self.spot.Brightness = Config.Light.SpotBrightness * level
+	self.spot.Angle = Config.Light.SpotAngle - (1 - level) * 8
+	self.point.Brightness = Config.Light.PointBrightness * self.strength * (0.6 + 0.4 * level)
+
+	if on then
+		self.part.Position = camera.CFrame.Position
+	else
+		self.part.Position = camera.CFrame.Position
+	end
+end
+
+--- Cheap readout for the HUD's "light is a noise source" hint.
+function Flashlight:isOn()
+	return self.strength &gt; 0.5
+end
+
+function Flashlight:destroy()
+	if self.part then
+		self.part:Destroy()
+		self.part = nil
+	end
+end
+
+return Flashlight
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">HUD</string><ProtectedString name="Source">--[[
+	HUD - every pixel of client UI.
+
+	Built entirely in code (no image assets, no StarterGui contents) so the place file
+	stays a container for scripts. It reads nothing but replicated attributes, which
+	means the HUD cannot desync from the server's idea of your battery or lives.
+]]
+
+local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+--[[ Shared modules live in ReplicatedStorage.Blacksite. Addressed through the service rather
+     than script.Parent.Parent, because these folders are siblings, not ancestors. ]]
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("Blacksite")
+local Config = require(shared:WaitForChild("Config"))
+local Attributes = require(shared:WaitForChild("Attributes"))
+local Util = require(shared:WaitForChild("Util"))
+
+local HUD = {}
+HUD.__index = HUD
+
+local INK = Color3.fromRGB(214, 218, 220)
+local DIM = Color3.fromRGB(120, 128, 132)
+local PANEL = Color3.fromRGB(8, 9, 11)
+local ACCENT = Color3.fromRGB(74, 226, 200)
+local DANGER = Color3.fromRGB(198, 52, 42)
+local WARN = Color3.fromRGB(228, 172, 62)
+local GOOD = Color3.fromRGB(104, 226, 160)
+
+local KIND_COLOR = {
+	info = ACCENT,
+	good = GOOD,
+	warn = WARN,
+	bad = DANGER,
+}
+
+---------------------------------------------------------------------------
+-- widget helpers
+---------------------------------------------------------------------------
+
+local function create(cls, props, parent)
+	local inst = Instance.new(cls)
+	if props then
+		for key, value in pairs(props) do
+			if key ~= "Parent" then
+				inst[key] = value
+			end
+		end
+	end
+	if parent then
+		inst.Parent = parent
+	end
+	return inst
+end
+
+local function label(props, parent)
+	local defaults = {
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Code,
+		TextColor3 = INK,
+		Text = "",
+		TextSize = 15,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextWrapped = false,
+		TextStrokeTransparency = 0.55,
+		RichText = false,
+	}
+	for key, value in pairs(defaults) do
+		if props[key] == nil then
+			props[key] = value
+		end
+	end
+	return create("TextLabel", props, parent)
+end
+
+local function panel(props, parent)
+	local defaults = {
+		BackgroundColor3 = PANEL,
+		BackgroundTransparency = 0.28,
+		BorderSizePixel = 0,
+	}
+	for k, v in pairs(defaults) do
+		if props[k] == nil then
+			props[k] = v
+		end
+	end
+	local f = create("Frame", props, parent)
+	create("UIStroke", { Color = Color3.fromRGB(60, 66, 70), Thickness = 1, Transparency = 0.45 }, f)
+	return f
+end
+
+local function bar(width, height, color, parent)
+	local track = panel({ Size = UDim2.fromOffset(width, height), BackgroundTransparency = 0.55 }, parent)
+	local fill = create("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		BackgroundTransparency = 0,
+	}, track)
+	create("UICorner", { CornerRadius = UDim.new(0, 2) }, track)
+	create("UICorner", { CornerRadius = UDim.new(0, 2) }, fill)
+	return track, fill
+end
+
+local function button(text, size, parent, color)
+	local btn = create("TextButton", {
+		Text = text,
+		Font = Enum.Font.Code,
+		TextSize = 18,
+		TextColor3 = color or INK,
+		BackgroundColor3 = Color3.fromRGB(16, 18, 20),
+		Size = size,
+		AutoButtonColor = true,
+		BorderSizePixel = 0,
+	}, parent)
+	create("UICorner", { CornerRadius = UDim.new(0, 3) }, btn)
+	create("UIStroke", { Color = color or ACCENT, Thickness = 1.4, Transparency = 0.25 }, btn)
+	return btn
+end
+
+---------------------------------------------------------------------------
+-- construction
+---------------------------------------------------------------------------
+
+function HUD.new(deps)
+	-- builders below run as methods, so anything they need has to live on self
+	local self = setmetatable({}, HUD)
+	self.player = deps.player
+	self.playerGui = deps.playerGui
+	self.root = deps.root
+	self.remotes = deps.remotes
+	self.toasts = {}
+
+	local gui = create("ScreenGui", {
+		Name = "BlacksiteHUD",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		DisplayOrder = 10,
+		Enabled = true,
+	}, deps.playerGui)
+	self.gui = gui
+
+	self:buildHud()
+	self:buildPrompt()
+	self:buildToasts()
+	self:buildMenu()
+	self:buildResults()
+	self:buildDown()
+
+	self:hookAttributes()
+	self:hookPrompts()
+
+	return self
+end
+
+function HUD:buildHud()
+	local hud = panel({ Name = "Hud", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Active = false }, self.gui)
+	hud.BackgroundTransparency = 1
+	self.hud = hud
+
+	-- objective card, top left
+	local card = panel({ Name = "Objective", Position = UDim2.fromOffset(18, 16), Size = UDim2.fromOffset(232, 96) }, hud)
+	self.txtTitle = label({ Text = Config.Meta.Title .. "  //  SUBLEVEL 7", TextSize = 12, TextColor3 = DIM, Position = UDim2.fromOffset(10, 8), Size = UDim2.new(1, -20, 0, 14) }, card)
+	self.txtCells = label({ Text = "CELLS 0 / 5", TextSize = 26, Position = UDim2.fromOffset(10, 26), Size = UDim2.new(1, -20, 0, 32) }, card)
+	self.txtTimer = label({ Text = "--:--", TextSize = 15, TextColor3 = DIM, Position = UDim2.new(1, -78, 0, 10), Size = UDim2.fromOffset(64, 18), TextXAlignment = Enum.TextXAlignment.Right }, card)
+
+	-- lives pips
+	local livesRow = create("Frame", { Name = "Lives", BackgroundTransparency = 1, Position = UDim2.fromOffset(10, 66), Size = UDim2.new(1, -20, 0, 18) }, card)
+	self.pips = {}
+	for i = 1, 3 do
+		local pip = create("Frame", {
+			Size = UDim2.fromOffset(26, 7),
+			Position = UDim2.fromOffset((i - 1) * 32, 4),
+			BackgroundColor3 = DANGER,
+			BorderSizePixel = 0,
+		}, livesRow)
+		create("UICorner", { CornerRadius = UDim.new(0, 2) }, pip)
+		self.pips[i] = pip
+	end
+	label({ Text = "RUNS", TextSize = 11, TextColor3 = DIM, Position = UDim2.fromOffset(0, -12), Size = UDim2.fromOffset(60, 12) }, livesRow)
+
+	-- meters, bottom left
+	local meters = panel({ Name = "Meters", Position = UDim2.fromOffset(18, -124), Size = UDim2.fromOffset(232, 106) }, hud)
+	meters.AnchorPoint = Vector2.new(0, 1)
+	label({ Text = "LIGHT CELL", TextSize = 11, TextColor3 = DIM, Position = UDim2.fromOffset(10, 8), Size = UDim2.fromOffset(120, 12) }, meters)
+	self.batteryTrack, self.batteryFill = bar(212, 9, ACCENT, meters)
+	self.batteryTrack.Position = UDim2.fromOffset(10, 24)
+	self.txtBattery = label({ Text = "100%", TextSize = 11, TextColor3 = DIM, Position = UDim2.new(1, -50, 0, 6), Size = UDim2.fromOffset(40, 12), TextXAlignment = Enum.TextXAlignment.Right }, meters)
+
+	label({ Text = "BREATH", TextSize = 11, TextColor3 = DIM, Position = UDim2.fromOffset(10, 44), Size = UDim2.fromOffset(120, 12) }, meters)
+	self.staminaTrack, self.staminaFill = bar(212, 9, GOOD, meters)
+	self.staminaTrack.Position = UDim2.fromOffset(10, 60)
+
+	label({ Text = "PROXIMITY", TextSize = 11, TextColor3 = DIM, Position = UDim2.fromOffset(10, 78), Size = UDim2.fromOffset(140, 12) }, meters)
+	self.dreadTrack, self.dreadFill = bar(212, 5, DANGER, meters)
+	self.dreadTrack.Position = UDim2.fromOffset(10, 92)
+	self.dreadTrack.BackgroundTransparency = 0.75
+
+	-- signal / compass, bottom right
+	local compass = panel({ Name = "Signal", AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromOffset(-18, -18), Size = UDim2.fromOffset(196, 74) }, hud)
+	self.txtSignal = label({ Text = "NO SIGNAL", TextSize = 13, TextColor3 = DIM, Position = UDim2.fromOffset(10, 8), Size = UDim2.new(1, -20, 0, 16) }, compass)
+	self.txtBearing = label({ Text = "???", TextSize = 30, Position = UDim2.fromOffset(10, 26), Size = UDim2.fromOffset(90, 40) }, compass)
+	self.txtDistance = label({ Text = "---", TextSize = 16, TextColor3 = DIM, Position = UDim2.new(1, -80, 0, 34), Size = UDim2.fromOffset(70, 20), TextXAlignment = Enum.TextXAlignment.Right }, compass)
+
+	-- key legend
+	local legend = panel({ Name = "Keys", AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromOffset(-18, 16), Size = UDim2.fromOffset(216, 74), BackgroundTransparency = 0.55 }, hud)
+	label({
+		Text = "F  LIGHT      SHIFT  RUN\nCTRL  CROUCH    E      INTERACT\nV  CAMERA     M  MUTE",
+		TextSize = 12,
+		TextColor3 = DIM,
+		Position = UDim2.fromOffset(10, 8),
+		Size = UDim2.new(1, -20, 1, -16),
+	}, legend)
+
+	-- threat banner
+	self.banner = label({
+		Text = "",
+		TextSize = 18,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.new(0.5, 0, 0, 22),
+		Size = UDim2.fromOffset(520, 24),
+		TextColor3 = DANGER,
+		TextStrokeTransparency = 0.2,
+	}, hud)
+
+	-- hidden-state panel
+	self.hiddenPanel = panel({
+		Name = "Hidden",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -150),
+		Size = UDim2.fromOffset(300, 58),
+		Visible = false,
+	}, hud)
+	self.txtHidden = label({ Text = "HOLD STILL", TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 18) }, self.hiddenPanel)
+	self.foundTrack, self.foundFill = bar(260, 7, DANGER, self.hiddenPanel)
+	self.foundTrack.Position = UDim2.fromOffset(20, 34)
+	self.foundFill.BackgroundColor3 = DANGER
+
+	-- crosshair
+	self.dot = create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(3, 3),
+		Position = UDim2.fromScale(0.5, 0.5),
+		BackgroundColor3 = Color3.fromRGB(230, 230, 230),
+		BackgroundTransparency = 0.35,
+		BorderSizePixel = 0,
+	}, hud)
+	create("UICorner", { CornerRadius = UDim.new(1, 0) }, self.dot)
+end
+
+function HUD:buildPrompt()
+	local prompt = panel({
+		Name = "Prompt",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -120),
+		Size = UDim2.fromOffset(300, 54),
+		Visible = false,
+	}, self.hud)
+	self.promptPanel = prompt
+
+	self.promptKey = label({
+		Text = "E",
+		TextSize = 18,
+		TextColor3 = PANEL,
+		BackgroundColor3 = ACCENT,
+		Size = UDim2.fromOffset(30, 28),
+		Position = UDim2.fromOffset(12, 13),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextStrokeTransparency = 1,
+	}, prompt)
+	create("UICorner", { CornerRadius = UDim.new(0, 3) }, self.promptKey)
+
+	self.promptAction = label({ Text = "TAKE", TextSize = 16, Position = UDim2.fromOffset(52, 8), Size = UDim2.new(1, -62, 0, 18) }, prompt)
+	self.promptObject = label({ Text = "", TextSize = 12, TextColor3 = DIM, Position = UDim2.fromOffset(52, 28), Size = UDim2.new(1, -62, 0, 16) }, prompt)
+	self.holdTrack, self.holdFill = bar(236, 4, WARN, prompt)
+	self.holdTrack.Position = UDim2.fromOffset(52, 46)
+	self.holdTrack.Visible = false
+end
+
+function HUD:buildToasts()
+	local holder = create("Frame", {
+		Name = "Toasts",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -186),
+		Size = UDim2.fromOffset(460, 1),
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.Y,
+	}, self.hud)
+	create("UIListLayout", {
+		Padding = UDim.new(0, 6),
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	}, holder)
+	self.toastHolder = holder
+end
+
+function HUD:buildMenu()
+	local menu = create("ScreenGui", {
+		Name = "BlacksiteMenu",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		DisplayOrder = 30,
+		Enabled = false,
+	}, self.playerGui)
+	self.menu = menu
+
+	local bg = create("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(4, 5, 6), BorderSizePixel = 0 }, menu)
+	create("UIGradient", { Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 0.35),
+	}), Rotation = 90 }, bg)
+
+	local holder = create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(560, 420),
+		BackgroundTransparency = 1,
+	}, bg)
+
+	local title = label({ Text = Config.Meta.Title, TextSize = 74, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 86), Position = UDim2.fromOffset(0, 0), TextStrokeTransparency = 0.85 }, holder)
+	self.menuTitle = title
+	label({ Text = Config.Meta.Subtitle, TextSize = 16, TextColor3 = DANGER, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 22), Position = UDim2.fromOffset(0, 88) }, holder)
+
+	label({
+		Text = "Five igniter cells. One blast door. One thing in the dark with you.\n"
+			.. "\n"
+			.. "It hears movement and it sees your beam. Sprint and it will find you;\n"
+			.. "shine the light on it and you will see it clearly, once, too clearly.\n"
+			.. "When it is close, get in a locker and hold still.",
+		TextSize = 15,
+		TextColor3 = Color3.fromRGB(168, 174, 178),
+		TextWrapped = true,
+		Size = UDim2.new(1, 0, 0, 108),
+		Position = UDim2.fromOffset(0, 130),
+		TextXAlignment = Enum.TextXAlignment.Center,
+	}, holder)
+
+	self.menuButton = button(Config.Copy.Menu, UDim2.new(1, 0, 0, 46), holder, ACCENT)
+	self.menuButton.Position = UDim2.fromOffset(0, 258)
+
+	self.viewButton = button("VIEW: FIRST PERSON", UDim2.new(1, 0, 0, 32), holder, DIM)
+	self.viewButton.Position = UDim2.fromOffset(0, 312)
+
+	self.menuStatus = label({
+		Text = "",
+		TextSize = 13,
+		TextColor3 = DIM,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.new(1, 0, 0, 40),
+		Position = UDim2.fromOffset(0, 356),
+	}, holder)
+
+	self.viewFirstPerson = true
+	self.viewButton.MouseButton1Click:Connect(function()
+		self.viewFirstPerson = not self.viewFirstPerson
+		self.viewButton.Text = "VIEW: " .. (self.viewFirstPerson and "FIRST PERSON" or "THIRD PERSON")
+		self.viewButton.TextColor3 = DIM
+		if self.onViewMode then
+			self.onViewMode(self.viewFirstPerson)
+		end
+	end)
+
+	self.menuButton.MouseButton1Click:Connect(function()
+		if self.onJoin then
+			self.onJoin()
+		end
+	end)
+end
+
+function HUD:buildResults()
+	local gui = create("ScreenGui", {
+		Name = "BlacksiteResults",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		DisplayOrder = 40,
+		Enabled = false,
+	}, self.playerGui)
+	self.results = gui
+
+	local bg = create("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(5, 5, 6), BorderSizePixel = 0, BackgroundTransparency = 0.08 }, gui)
+
+	local head = label({ Text = "", TextSize = 54, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0.28, 0), Size = UDim2.new(1, 0, 0, 70), TextStrokeTransparency = 0.9 }, bg)
+	self.resultHead = head
+	self.resultSub = label({ Text = "", TextSize = 16, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0.28, 72), Size = UDim2.new(1, 0, 0, 24) }, bg)
+	self.resultBody = label({
+		Text = "",
+		TextSize = 15,
+		TextWrapped = true,
+		Position = UDim2.new(0.5, -160, 0.42, 0),
+		Size = UDim2.fromOffset(320, 140),
+		TextXAlignment = Enum.TextXAlignment.Left,
+	}, bg)
+
+	self.resultButton = button("READY FOR THE NEXT LIFT", UDim2.fromOffset(300, 44), bg, ACCENT)
+	self.resultButton.Position = UDim2.new(0.5, -150, 0.42, 152)
+	self.resultButton.MouseButton1Click:Connect(function()
+		if self.onNextRound then
+			self.onNextRound()
+		end
+		self.results.Enabled = false
+	end)
+
+	self.resultCount = label({ Text = "", TextSize = 13, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0.5, -150, 0.42, 206), Size = UDim2.fromOffset(300, 20) }, bg)
+end
+
+function HUD:buildDown()
+	local gui = create("ScreenGui", {
+		Name = "BlacksiteDown",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		DisplayOrder = 35,
+		Enabled = false,
+	}, self.playerGui)
+	self.down = gui
+	local bg = create("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(10, 2, 2), BackgroundTransparency = 0.18, BorderSizePixel = 0 }, gui)
+	self.downText = label({ Text = "YOU WERE TAKEN", TextSize = 42, TextColor3 = DANGER, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0.4, 0), Size = UDim2.new(1, 0, 0, 56), TextStrokeTransparency = 0.75 }, bg)
+	self.downSub = label({ Text = "", TextSize = 15, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 0.4, 60), Size = UDim2.new(1, 0, 0, 22) }, bg)
+end
+
+---------------------------------------------------------------------------
+-- data binding
+---------------------------------------------------------------------------
+
+function HUD:hookAttributes()
+	local player = self.player
+	local root = self.root
+
+	self.lastPhase = Attributes.get(root, "Phase", "intermission")
+
+	player:GetAttributeChangedSignal("State"):Connect(function()
+		self:syncState()
+	end)
+	root:GetAttributeChangedSignal("Phase"):Connect(function()
+		self.lastPhase = Attributes.get(root, "Phase", "intermission")
+		self:syncState()
+	end)
+
+	root:GetAttributeChangedSignal("CellsFound"):Connect(function()
+		self:syncObjective()
+	end)
+	root:GetAttributeChangedSignal("GateOpen"):Connect(function()
+		self:syncObjective()
+	end)
+	root:GetAttributeChangedSignal("Countdown"):Connect(function()
+		self:syncObjective()
+	end)
+	root:GetAttributeChangedSignal("TimeLeft"):Connect(function()
+		self:syncObjective()
+	end)
+	root:GetAttributeChangedSignal("Purge"):Connect(function()
+		self:syncObjective()
+	end)
+	self:syncState()
+	self:syncObjective()
+end
+
+function HUD:stateForPhase()
+	return Attributes.get(self.root, "Phase", "intermission")
+end
+
+function HUD:syncState()
+	local name = Attributes.get(self.player, "State", "menu")
+	local phase = self:stateForPhase()
+
+	local inMenu = name == "menu" or name == "lobby"
+	self.menu.Enabled = inMenu and phase ~= "resolving"
+	if inMenu then
+		local waiting = Attributes.num(self.root, "Waiting", 0)
+		if name == "lobby" then
+			self.menuStatus.Text = "IN STAGING  -  LIFT IN " .. Attributes.num(self.root, "Countdown", 0) .. "s   |   " .. waiting .. " READY"
+			self.menuButton.Text = "WAITING FOR THE LIFT"
+		else
+			self.menuStatus.Text = "The lift is ready when you are. Nobody waits for you down there."
+			self.menuButton.Text = Config.Copy.Menu
+		end
+	end
+
+	self.down.Enabled = name == "down" or name == "consumed"
+	if name == "down" then
+		self.downText.Text = "DRAGGED UNDER"
+		self.downSub.Text = "redeploying at the airlock..."
+	elseif name == "consumed" then
+		self.downText.Text = "NO RUNS LEFT"
+		self.downSub.Text = "the sublevel keeps you. spectating the crew."
+	end
+
+	local hideHud = inMenu
+	self.hud.Visible = not hideHud
+	self.hiddenPanel.Visible = Attributes.get(self.player, "Hidden", false) and true or false
+end
+
+function HUD:syncObjective()
+	local found = Attributes.num(self.root, "CellsFound", 0)
+	local needed = Attributes.num(self.root, "CellsNeeded", Config.Round.CellsNeeded)
+	local gateOpen = Attributes.get(self.root, "GateOpen", false)
+	local purge = Attributes.get(self.root, "Purge", false)
+	local timeLeft = Attributes.num(self.root, "TimeLeft", 0)
+
+	if gateOpen then
+		self.txtCells.Text = "GET OUT"
+		self.txtCells.TextColor3 = GOOD
+	else
+		self.txtCells.Text = "CELLS " .. found .. " / " .. needed
+		self.txtCells.TextColor3 = INK
+	end
+
+	self.txtTitle.Text = Config.Meta.Title .. "  //  SUBLEVEL 7" .. (purge and "   [PURGE]" or "")
+	if purge then
+		self.txtTitle.TextColor3 = DANGER
+	else
+		self.txtTitle.TextColor3 = DIM
+	end
+
+	if Attributes.get(self.root, "Phase") == "intermission" then
+		self.txtTimer.Text = "T-" .. math.max(0, Attributes.num(self.root, "Countdown", 0)) .. "s"
+	else
+		self.txtTimer.Text = Util.formatTime(timeLeft)
+	end
+	self.txtTimer.TextColor3 = timeLeft &lt; Config.Round.PurgeWarn and DANGER or DIM
+
+	local lives = Attributes.num(self.player, "Lives", Config.Player.Lives)
+	for i = 1, #self.pips do
+		self.pips[i].BackgroundTransparency = i &lt;= lives and 0 or 0.85
+	end
+end
+
+--- Per-frame bits that must feel analogue: meters, dread, banner.
+function HUD:update(dt)
+	self.time = (self.time or 0) + dt
+	local p = self.player
+
+	local battery = Attributes.num(p, "Battery", 100)
+	local stamina = Attributes.num(p, "Stamina", 100)
+	local dread = Attributes.num(p, "Dread", 0)
+	local found = Attributes.num(p, "Found", 0)
+	local hidden = Attributes.get(p, "Hidden", false)
+	local signal = Attributes.num(p, "Signal", 0)
+
+	self.batteryFill.Size = UDim2.fromScale(Util.clamp(battery / 100, 0, 1), 1)
+	self.batteryFill.BackgroundColor3 = battery &lt; 20 and DANGER or (battery &lt; 45 and WARN or ACCENT)
+	self.txtBattery.Text = math.floor(battery + 0.5) .. "%"
+
+	self.staminaFill.Size = UDim2.fromScale(Util.clamp(stamina / 100, 0, 1), 1)
+	self.staminaFill.BackgroundColor3 = stamina &lt; 15 and WARN or GOOD
+
+	self.dreadFill.Size = UDim2.fromScale(Util.clamp(dread, 0, 1), 1)
+
+	if self.foundFill then
+		self.foundFill.Size = UDim2.fromScale(Util.clamp(found, 0, 1), 1)
+	end
+	if hidden ~= self.hiddenShown then
+		self.hiddenShown = hidden
+		self.hiddenPanel.Visible = hidden and true or false
+	end
+
+	-- threat banner
+	local text, color
+	if dread &gt; 0.93 then
+		text = Config.Entity.Name .. " HAS YOU"
+		color = DANGER
+	elseif dread &gt; 0.66 then
+		text = Config.Entity.Name .. " IS CLOSE"
+		color = DANGER
+	elseif dread &gt; 0.34 then
+		text = "MOVEMENT NEARBY"
+		color = WARN
+	elseif hidden then
+		text = "HIDDEN"
+		color = GOOD
+	end
+	if text ~= self.bannerText then
+		self.bannerText = text
+		self.banner.Text = text or ""
+		self.banner.TextColor3 = color or DANGER
+	end
+	self.banner.TextTransparency = 0.1 + 0.35 * (0.5 + 0.5 * math.sin(self.time * (6 + dread * 12)))
+
+	-- compass
+	local distance = Attributes.num(p, "Distance", 0)
+	local bearing = Attributes.num(p, "Bearing", 0)
+	local kind = Attributes.get(p, "SignalKind", "")
+	if signal &gt; 0.02 then
+		local arrow = "???"
+		local b = (bearing + 540) % 360 - 180
+		if b &lt; -135 or b &gt; 135 then
+			arrow = "DOWN"
+		elseif b &lt; -45 then
+			arrow = "LEFT"
+		elseif b &gt; 45 then
+			arrow = "RIGHT"
+		else
+			arrow = "AHEAD"
+		end
+		if arrow ~= self.lastArrow then
+			self.lastArrow = arrow
+			self.txtBearing.Text = arrow
+		end
+		self.txtDistance.Text = Util.studsToMeters(distance) .. "m"
+		local prefix = kind == "gate" and "EXIT BEARING" or "CELL SIGNAL"
+		self.txtSignal.Text = prefix .. "  " .. string.rep("=", math.floor(signal * 6) + 1) .. string.rep("-", 6 - math.floor(signal * 6))
+		self.txtSignal.TextColor3 = signal &gt; 0.7 and ACCENT or DIM
+	else
+		self.txtSignal.Text = "NO SIGNAL"
+		self.txtBearing.Text = "---"
+		self.txtDistance.Text = ""
+	end
+
+	self.dot.BackgroundTransparency = 0.35 + dread * 0.4
+end
+
+---------------------------------------------------------------------------
+-- prompts
+---------------------------------------------------------------------------
+
+function HUD:hookPrompts()
+	local current
+	local function show(prompt)
+		current = prompt
+		self.promptPanel.Visible = true
+		self.promptAction.Text = string.upper(prompt.ActionText)
+		self.promptObject.Text = prompt.ObjectText
+		self.promptKey.BackgroundTransparency = 0
+		local hold = prompt.HoldDuration or 0
+		self.holdTrack.Visible = hold &gt; 0
+		self.holdFill.Size = UDim2.fromScale(0, 1)
+	end
+
+	local function hide()
+		current = nil
+		self.promptPanel.Visible = false
+		self.holdTrack.Visible = false
+		self.holdTween = nil
+	end
+
+	ProximityPromptService.PromptShown:Connect(show)
+	ProximityPromptService.PromptHidden:Connect(function(prompt)
+		if prompt == current then
+			hide()
+		end
+	end)
+
+	local ok = pcall(function()
+		ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
+			if prompt ~= current or not (prompt.HoldDuration and prompt.HoldDuration &gt; 0) then
+				return
+			end
+			self.holdFill.Size = UDim2.fromScale(0, 1)
+			TweenService:Create(self.holdFill, TweenInfo.new(prompt.HoldDuration, Enum.EasingStyle.Linear), {
+				Size = UDim2.fromScale(1, 1),
+			}):Play()
+		end)
+		ProximityPromptService.PromptButtonHoldEnded:Connect(function()
+			self.holdFill.Size = UDim2.fromScale(0, 1)
+		end)
+	end)
+	self.holdsSupported = ok
+
+	self.hidePrompt = hide
+end
+
+---------------------------------------------------------------------------
+-- toasts
+---------------------------------------------------------------------------
+
+function HUD:toast(text, kind)
+	local tint = KIND_COLOR[kind] or ACCENT
+	local frame = panel({
+		Size = UDim2.fromOffset(440, 30),
+		BackgroundTransparency = 0.15,
+	}, self.toastHolder)
+	local stroke = frame:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = tint
+		stroke.Transparency = 0.1
+	end
+	label({
+		Text = text,
+		TextSize = 14,
+		TextColor3 = tint,
+		Size = UDim2.new(1, -20, 1, 0),
+		Position = UDim2.fromOffset(10, 0),
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextStrokeTransparency = 0.7,
+	}, frame)
+	table.insert(self.toasts, { frame = frame, life = 3.2 })
+	self:trimToasts()
+end
+
+function HUD:trimToasts()
+	while #self.toasts &gt; 4 do
+		local old = table.remove(self.toasts, 1)
+		old.frame:Destroy()
+	end
+end
+
+function HUD:updateToasts(dt)
+	for i = #self.toasts, 1, -1 do
+		local item = self.toasts[i]
+		item.life = item.life - dt
+		if item.life &lt;= 0.5 and not item.fading then
+			item.fading = true
+			TweenService:Create(item.frame, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
+			local stroke = item.frame:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				TweenService:Create(stroke, TweenInfo.new(0.5), { Transparency = 1 }):Play()
+			end
+			for _, child in ipairs(item.frame:GetChildren()) do
+				if child:IsA("TextLabel") then
+					TweenService:Create(child, TweenInfo.new(0.5), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+				end
+			end
+		end
+		if item.life &lt;= 0 then
+			table.remove(self.toasts, i)
+			item.frame:Destroy()
+		end
+	end
+end
+
+---------------------------------------------------------------------------
+-- results / flash overlays
+---------------------------------------------------------------------------
+
+function HUD:showResults(payload)
+	payload = payload or {}
+	local kind = payload.kind or "consumed"
+	local head, tint, sub
+	if kind == "escaped" then
+		head, tint, sub = "YOU ARE OUT", GOOD, "the door seals behind you"
+	elseif kind == "partial" then
+		head, tint, sub = "SIGNAL RECOVERED", GOOD, "not everyone made the lift"
+	elseif kind == "purged" then
+		head, tint, sub = "SUBLEVEL SEALED", DANGER, "the purge ran with you inside"
+	else
+		head, tint, sub = "NO SIGNAL", DANGER, "the sublevel keeps what it takes"
+	end
+
+	self.resultHead.Text = head
+	self.resultHead.TextColor3 = tint
+	self.resultSub.Text = sub
+
+	local lines = {
+		"CELLS SECURED     " .. (payload.cells or 0) .. " / " .. Config.Round.CellsNeeded,
+		"TIME INSIDE       " .. Util.formatTime(payload.time or 0),
+		"RUNS LEFT         " .. (payload.lives or 0),
+		"EXPEDITIONS       " .. (payload.rounds or 0),
+	}
+	if payload.best then
+		lines[#lines + 1] = "BEST EXFIL        " .. Util.formatTime(payload.best)
+	end
+	self.resultBody.Text = table.concat(lines, "\n")
+
+	self.results.Enabled = true
+	self.resultsCountdown = Config.Round.ResolveTime
+	self.resultCount.Text = "lift returns in " .. math.ceil(self.resultsCountdown) .. "s"
+end
+
+function HUD:updateResults(dt)
+	if self.results.Enabled and self.resultsCountdown and self.resultsCountdown &gt; 0 then
+		self.resultsCountdown = self.resultsCountdown - dt
+		self.resultCount.Text = "ready up for the next lift"
+		if self.resultsCountdown &lt;= 0 then
+			self.results.Enabled = false
+		end
+	end
+end
+
+--- One-frame flash used by hits, grabs and the reveal sting.
+function HUD:flash(color, alpha, seconds)
+	local frame = create("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = color,
+		BackgroundTransparency = 1 - alpha,
+		BorderSizePixel = 0,
+	}, self.gui)
+	TweenService:Create(frame, TweenInfo.new(seconds or 0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		BackgroundTransparency = 1,
+	}):Play()
+	game:GetService("Debris"):AddItem(frame, (seconds or 0.45) + 0.1)
+end
+
+return HUD
+</ProtectedString></Properties></Item><Item class="LocalScript" referent="RBX15"><Properties><string name="Name">Init</string><ProtectedString name="Source">--[[
+	Blacksite - client entry point.
+
+	Glue only: it builds the local rig (HUD, effects, flashlight, camera), binds input,
+	and forwards the server's event stream into those modules. If you want to change how
+	the game *feels*, this file is where you decide which module hears which signal.
+]]
+
+local ContextActionService = game:GetService("ContextActionService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+--[[ Shared modules live in ReplicatedStorage.Blacksite. Addressed through the service rather
+     than script.Parent.Parent, because these folders are siblings, not ancestors. ]]
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("Blacksite")
+local Config = require(shared:WaitForChild("Config"))
+local Attributes = require(shared:WaitForChild("Attributes"))
+local Remotes = require(shared:WaitForChild("Remotes"))
+
+local container = script.Parent
+local HUD = require(container:WaitForChild("HUD"))
+local Effects = require(container:WaitForChild("Effects"))
+local Rig = require(container:WaitForChild("Rig"))
+local Flashlight = require(container:WaitForChild("Flashlight"))
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui", 60) or player.PlayerGui
+local camera = Workspace.CurrentCamera
+while not camera do
+	task.wait()
+	camera = Workspace.CurrentCamera
+end
+local root = workspace:WaitForChild("BlacksiteRoot", 60)
+local remotes = Remotes.get()
+
+---------------------------------------------------------------------------
+-- strip the default UI. A horror game lives or dies on never seeing the backpack.
+---------------------------------------------------------------------------
+task.spawn(function()
+	local ok = pcall(function()
+		StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, false)
+	end)
+	if not ok then
+		for _, item in ipairs({ "Backpack", "Health", "Chat", "PlayerList", "InfoButton", "EmotesMenu", "StatsTable", "BuyButton" }) do
+			pcall(function()
+				StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType[item], false)
+			end)
+		end
+	end
+end)
+
+---------------------------------------------------------------------------
+-- modules
+---------------------------------------------------------------------------
+
+local effects = Effects.new({
+	player = player,
+	root = root,
+	camera = camera,
+	playerGui = playerGui,
+	container = camera,
+})
+
+local hud = HUD.new({
+	player = player,
+	root = root,
+	playerGui = playerGui,
+	remotes = remotes,
+})
+
+local rig = Rig.new({
+	camera = camera,
+	player = player,
+	effects = effects,
+})
+rig:start()
+
+local light = Flashlight.new({
+	player = player,
+	camera = camera,
+	root = root,
+})
+
+---------------------------------------------------------------------------
+-- audio
+--
+-- Every id comes from Config.Sounds and an empty id is a silent no-op, so the game
+-- is fully playable with zero uploaded assets and gets footsteps, stingers and a
+-- heartbeat the moment someone pastes ids in.
+---------------------------------------------------------------------------
+
+local muted = false
+local tracked = {}
+
+local function track(sound)
+	tracked[#tracked + 1] = { sound = sound, volume = sound.Volume }
+	if #tracked &gt; 12 then
+		table.remove(tracked, 1)
+	end
+	return sound
+end
+
+local function setMuted(value)
+	muted = value
+	for _, entry in ipairs(tracked) do
+		local sound = entry.sound
+		if sound and sound.Parent then
+			sound.Volume = muted and 0 or entry.volume
+		end
+	end
+end
+
+local function playSound(name, options)
+	options = options or {}
+	local id = Config.Sounds[name]
+	if type(id) ~= "string" or id == "" then
+		return nil
+	end
+	local sound = Instance.new("Sound")
+	sound.Name = "Blacksite_" .. name
+	sound.SoundId = id
+	sound.Volume = (options.volume or 0.7) * (Config.SoundVolumes[name] or 1)
+	sound.PlaybackSpeed = options.speed or 1
+	sound.Looped = options.loop == true
+	sound.Parent = camera
+	if options.stopExisting then
+		for _, entry in ipairs(tracked) do
+			if entry.sound.Name == "Blacksite_" .. name then
+				entry.sound:Stop()
+				entry.sound:Destroy()
+			end
+		end
+	end
+	track(sound)
+	sound.Ended:Connect(function()
+		if sound.Parent then
+			sound:Destroy()
+		end
+	end)
+	sound:Play()
+	return sound
+end
+
+-- Heartbeat is the one sound worth rigging properly: dread drives its volume and its
+-- rate, which is the cheapest, most effective horror trick in the medium.
+local heartbeat
+local function heartbeatFor(dread)
+	if Config.Sounds.Heartbeat == "" or muted then
+		return
+	end
+	if not heartbeat or not heartbeat.Parent then
+		heartbeat = playSound("Heartbeat", { volume = 0, loop = true })
+		if not heartbeat then
+			return
+		end
+	end
+	heartbeat.Volume = dread * dread * (Config.SoundVolumes.Heartbeat or 0.5)
+	heartbeat.PlaybackSpeed = 0.8 + dread * 0.75
+end
+
+---------------------------------------------------------------------------
+-- input
+---------------------------------------------------------------------------
+
+local wantSprint, wantCrouch = false, false
+local moveDirty = false
+local firstPerson = true
+
+local function pushMove()
+	moveDirty = true
+end
+
+local function sendMove()
+	if not moveDirty or not remotes then
+		return
+	end
+	moveDirty = false
+	Remotes.fire(remotes, Remotes.Actions.Move, wantSprint == true, wantCrouch == true)
+end
+
+local function setFirstPerson(on)
+	pcall(function()
+		player.CameraMode = on and Enum.CameraMode.LockFirstPerson or Enum.CameraMode.Classic
+	end)
+end
+
+local function toggleFlash()
+	local nextOn = not Attributes.get(player, "FlashOn", false)
+	if remotes then
+		Remotes.fire(remotes, Remotes.Actions.Flash, nextOn)
+	end
+	-- Optimistic: the attribute round trip is a frame or two, and a flashlight that
+	-- arrives two frames late feels broken. The server's value wins either way.
+	Attributes.set(player, "FlashOn", nextOn)
+end
+
+ContextActionService:BindAction("BlacksiteFlash", function(actionName, state)
+	if state == Enum.UserInputState.Begin then
+		toggleFlash()
+	end
+	return Enum.ContextActionResult.Sink
+end, true, Enum.KeyCode.F, Enum.KeyCode.ButtonX)
+
+ContextActionService:BindAction("BlacksiteSprint", function(_, state)
+	if state == Enum.UserInputState.Begin then
+		wantSprint = true
+		pushMove()
+	elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+		wantSprint = false
+		pushMove()
+	end
+	return Enum.ContextActionResult.Sink
+end, true, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonR1)
+
+ContextActionService:BindAction("BlacksiteCrouch", function(_, state)
+	if state == Enum.UserInputState.Begin then
+		wantCrouch = true
+		pushMove()
+	elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+		wantCrouch = false
+		pushMove()
+	end
+	return Enum.ContextActionResult.Sink
+end, true, Enum.KeyCode.LeftControl, Enum.KeyCode.ButtonL1)
+
+ContextActionService:BindAction("BlacksiteView", function(_, state)
+	if state == Enum.UserInputState.Begin then
+		firstPerson = not firstPerson
+		setFirstPerson(firstPerson)
+		hud:toast("VIEW: " .. (firstPerson and "FIRST PERSON" or "THIRD PERSON"), "info")
+	end
+	return Enum.ContextActionResult.Sink
+end, false, Enum.KeyCode.V, Enum.KeyCode.ButtonY)
+
+pcall(function()
+	ContextActionService:SetTitle("BlacksiteFlash", "LIGHT")
+	ContextActionService:SetTitle("BlacksiteSprint", "RUN")
+	ContextActionService:SetTitle("BlacksiteCrouch", "SNEAK")
+	ContextActionService:SetPosition("BlacksiteFlash", UDim2.new(0.9, 0, 0.42, 0))
+	ContextActionService:SetPosition("BlacksiteSprint", UDim2.new(0.9, 0, 0.28, 0))
+	ContextActionService:SetPosition("BlacksiteCrouch", UDim2.new(0.78, 0, 0.28, 0))
+end)
+
+local function watchKey(code, onDown)
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if input.KeyCode == code and not processed then
+			onDown()
+		end
+	end)
+end
+
+watchKey(Enum.KeyCode.M, function()
+	setMuted(not muted)
+	hud:toast(muted and "LOCAL AUDIO OFF" or "LOCAL AUDIO ON", "info")
+end)
+
+---------------------------------------------------------------------------
+-- menu buttons
+---------------------------------------------------------------------------
+
+hud.onJoin = function()
+	if remotes then
+		Remotes.fire(remotes, Remotes.Actions.Join)
+	end
+	hud.menu.Enabled = false
+	effects:fade("black")
+end
+
+hud.onNextRound = function()
+	if remotes then
+		Remotes.fire(remotes, Remotes.Actions.Restart)
+	end
+	hud.results.Enabled = false
+end
+
+hud.onViewMode = function(on)
+	firstPerson = on
+	setFirstPerson(on)
+end
+
+---------------------------------------------------------------------------
+-- the Hollow, as seen from here
+---------------------------------------------------------------------------
+
+local hollow
+
+local function hookHollow(model)
+	local highlight = model:FindFirstChild("Reveal")
+	if not highlight then
+		return
+	end
+	model:GetAttributeChangedSignal("Revealed"):Connect(function()
+		if model:GetAttribute("Revealed") then
+			highlight.OutlineTransparency = 0
+			highlight.FillTransparency = 0.84
+			TweenService:Create(highlight, TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+				OutlineTransparency = 0.5,
+				FillTransparency = 1,
+			}):Play()
+			effects:kick(0.5)
+			playSound("Scream", { volume = 0.5, speed = 0.78 })
+		else
+			highlight.OutlineTransparency = 1
+			highlight.FillTransparency = 1
+		end
+	end)
+end
+
+local function refreshHollow()
+	local model = root and root:FindFirstChild("TheHollow")
+	if model ~= hollow then
+		hollow = model
+		if model then
+			hookHollow(model)
+		end
+	end
+end
+
+if root then
+	root.ChildAdded:Connect(refreshHollow)
+	root.ChildRemoved:Connect(function(child)
+		if child == hollow then
+			hollow = nil
+		end
+	end)
+	refreshHollow()
+end
+
+---------------------------------------------------------------------------
+-- hidden state: first person makes the locker gap the whole viewport
+---------------------------------------------------------------------------
+
+player:GetAttributeChangedSignal("Hidden"):Connect(function()
+	local hidden = Attributes.get(player, "Hidden", false)
+	if hidden then
+		setFirstPerson(true)
+		effects:showCard(Config.Copy.Hidden, 1.8)
+		playSound("LockerClose", { volume = 0.8 })
+	else
+		setFirstPerson(firstPerson)
+		playSound("LockerOpen", { volume = 0.8 })
+	end
+end)
+
+---------------------------------------------------------------------------
+-- server events
+---------------------------------------------------------------------------
+
+if remotes then
+	remotes.Event.OnClientEvent:Connect(function(event, payload, extra)
+		if event == "Toast" then
+			hud:toast(payload, extra or "info")
+		elseif event == "Scare" then
+			effects:scare(payload)
+			if payload and payload.kind == "grab" then
+				playSound("Scream", { volume = 1, speed = 0.85 })
+			elseif payload and payload.kind == "blink" then
+				playSound("Scream", { volume = 0.35, speed = 1.4 })
+			elseif payload and payload.kind == "gate" then
+				playSound("GateOpen", { volume = 0.9 })
+			end
+		elseif event == "Hit" then
+			effects:hit()
+			playSound("Grab", { volume = 0.95 })
+		elseif event == "Fade" then
+			effects:fade(payload)
+		elseif event == "Result" then
+			hud:showResults(payload)
+		elseif event == "Sound" then
+			playSound(payload)
+		elseif event == "Reveal" then
+			effects:kick(0.3)
+		end
+	end)
+end
+
+if root then
+	root:GetAttributeChangedSignal("Phase"):Connect(function()
+		local phase = Attributes.get(root, "Phase", "intermission")
+		if phase == "ingress" then
+			effects:showCard("SUBLEVEL 7  //  POWER OFFLINE", 3.4)
+		elseif phase == "active" then
+			playSound("Ambience", { volume = 0.3, loop = true, stopExisting = true })
+		elseif phase == "intermission" or phase == "resolving" then
+			for _, entry in ipairs(tracked) do
+				if entry.sound.Name == "Blacksite_Ambience" and entry.sound.IsPlaying then
+					entry.sound:Stop()
+				end
+			end
+		end
+	end)
+end
+
+---------------------------------------------------------------------------
+---------------------------------------------------------------------------
+-- footsteps
+--
+-- The noise model is the core stealth mechanic and it is completely invisible, so a
+-- footstep is played on the same cadence the server uses to emit a noise ping. Silent
+-- when no id is configured, which is why this is a nicety and not a dependency.
+---------------------------------------------------------------------------
+
+local stepClock = 0
+
+local function footstepsFor(dt)
+	if Attributes.num(player, "Hidden", 0) &gt; 0.5 then
+		stepClock = 0
+		return
+	end
+	local character = player.Character
+	if not character then
+		return
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or not rootPart or humanoid.Health &lt;= 0 then
+		return
+	end
+	local velocity = rootPart.AssemblyLinearVelocity
+	local planar = math.sqrt(velocity.X * velocity.X + velocity.Z * velocity.Z)
+	if planar &lt; 2 then
+		stepClock = 0
+		return
+	end
+
+	local cadence = 0.44
+	if wantCrouch then
+		cadence = 0.72
+	elseif wantSprint then
+		cadence = 0.3
+	end
+	stepClock = stepClock + dt
+	if stepClock &lt; cadence then
+		return
+	end
+	-- Reset rather than subtract: a frame-rate dip should drop a step, not fire a burst.
+	stepClock = 0
+	playSound(wantSprint and "Sprint" or "FootstepConcrete", {
+		volume = wantCrouch and 0.25 or (wantSprint and 0.75 or 0.5),
+		speed = 0.94 + math.random() * 0.12,
+	})
+end
+
+-- frame
+---------------------------------------------------------------------------
+
+RunService.RenderStepped:Connect(function(dt)
+	dt = math.min(dt, 0.2)
+	-- movement intent is a state, not a stream: batched with the frame
+	sendMove()
+	effects:update(dt)
+	light:update(dt)
+	hud:update(dt)
+	hud:updateToasts(dt)
+	hud:updateResults(dt)
+	heartbeatFor(Attributes.num(player, "Dread", 0))
+	footstepsFor(dt)
+end)
+</ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Rig</string><ProtectedString name="Source">--[[
+	Rig - the camera.
+
+	Runs just after the built-in camera script (RenderPriority.Camera + 30) and layers
+	three things on top of it: a shake whose floor is driven by dread, a walk bob whose
+	amplitude is driven by speed, and a FOV that opens when you sprint, so panic is felt
+	in the widest possible way. The base CFrame is read and modified in place, so the
+	default camera keeps full control of where the player is looking.
+]]
+
+local RunService = game:GetService("RunService")
+
+--[[ Shared modules live in ReplicatedStorage.Blacksite. Addressed through the service rather
+     than script.Parent.Parent, because these folders are siblings, not ancestors. ]]
+local shared = game:GetService("ReplicatedStorage"):WaitForChild("Blacksite")
+local Config = require(shared:WaitForChild("Config"))
+local Attributes = require(shared:WaitForChild("Attributes"))
+local Util = require(shared:WaitForChild("Util"))
+
+local Rig = {}
+Rig.__index = Rig
+
+local noise = math.noise or function(a, b)
+	return math.sin(a * 12.9 + b * 78.2) * 0.5
+end
+
+function Rig.new(deps)
+	local self = setmetatable({}, Rig)
+	self.camera = deps.camera
+	self.player = deps.player
+	self.effects = deps.effects
+	self.phase = 0
+	self.time = 0
+	self.shakeSeed = math.random(1, 900)
+	self.fov = Config.Camera.Fov
+	self.bound = false
+	return self
+end
+
+function Rig:start()
+	if self.bound then
+		return
+	end
+	self.bound = true
+	local self2 = self
+	RunService:BindToRenderStep("BlacksiteRig", Enum.RenderPriority.Camera.Value + 30, function(dt)
+		self2:update(dt)
+	end)
+end
+
+function Rig:stop()
+	if not self.bound then
+		return
+	end
+	self.bound = false
+	pcall(function()
+		RunService:UnbindFromRenderStep("BlacksiteRig")
+	end)
+end
+
+function Rig:update(dt)
+	local camera = self.camera
+	if not camera or not camera.Parent then
+		return
+	end
+
+	self.time = self.time + dt
+
+	local player = self.player
+	local dread = Attributes.num(player, "Dread", 0)
+	local hidden = Attributes.get(player, "Hidden", false)
+
+	local char = player.Character
+	local humanoid = char and char:FindFirstChild("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+
+	local allowedSpeed = humanoid and humanoid.WalkSpeed or Config.Player.WalkSpeed
+	local camSpeed = 0
+	if root then
+		local v = root.AssemblyLinearVelocity
+		camSpeed = math.sqrt(v.X * v.X + v.Z * v.Z)
+	end
+
+	local camCfg = Config.Camera
+
+	-- FOV: opening up when sprinting makes the corridors feel like they are fleeing.
+	local targetFov = camCfg.Fov
+	if allowedSpeed &gt;= Config.Player.SprintSpeed - 1 and camSpeed &gt; 12 then
+		targetFov = camCfg.SprintFov
+	end
+	if hidden then
+		targetFov = camCfg.HiddenFov
+	end
+	targetFov = targetFov + dread * 3
+	self.fov = Util.damp(self.fov, targetFov, 0.16, dt)
+	camera.FieldOfView = self.fov
+
+	-- Walk bob, tied to actual ground speed rather than an input flag, so crouch-walking
+	-- and being knocked around both read correctly.
+	local moving = camSpeed &gt; 2 and not hidden
+	if moving then
+		self.phase = self.phase + dt * (camCfg.BobFrequency * (0.6 + camSpeed / Config.Player.SprintSpeed * 0.7))
+	else
+		self.phase = self.phase + dt * 0.7
+	end
+
+	local bobWeight = (moving and Util.clamp(camSpeed / Config.Player.WalkSpeed, 0.2, 1.5) or 0.12)
+	local up = math.sin(self.phase * 2) * camCfg.BobHeight * bobWeight
+	local side = math.sin(self.phase) * camCfg.BobSide * bobWeight
+	local roll = math.sin(self.phase) * camCfg.BobTurn * bobWeight
+
+	-- Shake: a decaying impulse from the effects layer plus a permanent floor of dread,
+	-- so the screen is never perfectly still once it is close.
+	local amp = (self.effects and self.effects.shake or 0) + dread * 0.055
+	local t = self.time
+	local sx = noise(self.shakeSeed, t * 22) * amp
+	local sy = noise(self.shakeSeed + 31, t * 26) * amp
+	local sr = noise(self.shakeSeed + 77, t * 17) * amp * 0.55
+
+	-- Breathing. Standing still is supposed to be uncomfortable.
+	local breath = math.sin(self.phase * 0.5) * (0.02 + dread * 0.09)
+	if hidden then
+		breath = math.sin(self.phase * 0.32) * (0.06 + dread * 0.12)
+	end
+
+	camera.CFrame = camera.CFrame * CFrame.new(side, up + breath, 0) * CFrame.Angles(sx, sy, roll)
+end
+
+return Rig
+</ProtectedString></Properties></Item></Item></Item><Item class="Workspace" referent="RBX21"><Properties><bool name="StreamingEnabled">false</bool></Properties><Item class="SpawnLocation" referent="RBX19"><Properties><string name="Name">BlacksiteSpawn</string><bool name="Anchored">true</bool><bool name="Neutral">true</bool><bool name="CanCollide">false</bool><float name="Transparency">1</float><float name="Duration">0</float><CoordinateFrame name="CFrame"><X>0</X><Y>-119</Y><Z>0</Z><R0>1</R0><R1>0</R1><R2>0</R2><R3>0</R3><R4>1</R4><R5>0</R5><R6>0</R6><R7>0</R7><R8>1</R8></CoordinateFrame><Vector3 name="size"><X>24</X><Y>1</Y><Z>24</Z></Vector3></Properties></Item><Item class="Folder" referent="RBX20"><Properties><string name="Name">BlacksiteRoot</string></Properties></Item></Item><Item class="Lighting" referent="RBX22"><Properties><float name="Brightness">0</float><float name="ClockTime">0</float><bool name="GlobalShadows">true</bool><float name="FogStart">14</float><float name="FogEnd">118</float><Color3 name="FogColor"><R>0.024</R><G>0.027</G><B>0.035</B></Color3><Color3 name="OutdoorFogColor"><R>0.024</R><G>0.027</G><B>0.035</B></Color3><Color3 name="Ambient"><R>0.012</R><G>0.016</G><B>0.024</B></Color3><Color3 name="OutdoorAmbient"><R>0</R><G>0</G><B>0</B></Color3><float name="EnvironmentDiffuseScale">0</float><float name="EnvironmentSpecularScale">0</float></Properties></Item></roblox>

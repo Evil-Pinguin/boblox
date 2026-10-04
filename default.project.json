@@ -1,0 +1,69 @@
+{
+  "name": "blacksite",
+  "tree": {
+    "$className": "DataModel",
+    "$properties": {
+      "Name": "Blacksite"
+    },
+    "ReplicatedFirst": {
+      "$className": "ReplicatedFirst"
+    },
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Blacksite": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Blacksite": {
+        "$path": "src/server"
+      }
+    },
+    "ServerStorage": {
+      "$className": "ServerStorage"
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Blacksite": {
+          "$path": "src/client"
+        }
+      }
+    },
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "StreamingEnabled": false,
+        "FilteringEnabled": true
+      },
+      "BlacksiteRoot": {
+        "$className": "Folder",
+        "$properties": {
+          "Name": "BlacksiteRoot"
+        }
+      }
+    },
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Ambient": "0, 0, 0",
+        "OutdoorAmbient": "0, 0, 0",
+        "Brightness": 0,
+        "ClockTime": 0,
+        "GlobalShadows": true,
+        "FogStart": 0,
+        "FogEnd": 110,
+        "FogColor": "6, 7, 9",
+        "OutdoorFogColor": "6, 7, 9"
+      }
+    },
+    "SoundService": {
+      "$className": "SoundService",
+      "$properties": {
+        "RespectFilteringEnabled": true
+      }
+    }
+  }
+}
