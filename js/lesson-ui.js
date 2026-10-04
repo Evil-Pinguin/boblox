@@ -5,7 +5,7 @@
   const root = document.getElementById('lesson');
   const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 
-  let id = null, L = null, st = null;
+  let id = null, L = null, st = null, onExit = null;
   let idx = 0, phase = 'ask', tries = 0, firstTry = true, xp = 0;
   let pick = null;      // choice: номер варианта
   let slots = [];       // fill: слова в пропусках
@@ -19,8 +19,8 @@
   const fullText = (s) => (s.wrap ? s.wrap[0] + typed.trim() + s.wrap[1] : typed.trim());
 
   /* ---------- открыть / закрыть ---------- */
-  function open(lessonId) {
-    id = lessonId; L = LESSONS[id];
+  function open(lessonId, opts) {
+    id = lessonId; L = LESSONS[id]; onExit = (opts && opts.onExit) || null;
     const data = J.state.data;
     st = data['lesson_' + id] = data['lesson_' + id] || { step: 0, xp: 0, done: false };
     if (st.done || st.step >= L.steps.length) { st.step = 0; st.xp = 0; } // повтор урока
@@ -33,6 +33,7 @@
     root.hidden = true;
     J.save();
     J.refresh();
+    if (onExit) { const f = onExit; onExit = null; f(); }
   }
   function resetStep() { phase = 'ask'; tries = 0; firstTry = true; pick = null; chosen = []; typed = ''; outText = ''; slots = []; }
 
@@ -102,6 +103,7 @@
     root.hidden = true;
     J.refresh();
     J.autoClaim();
+    if (onExit) { const f = onExit; onExit = null; f(); }
   }
 
   /* ---------- рендер ---------- */
@@ -292,14 +294,14 @@
     main.appendChild(el('h2', 'l-title', 'Урок пройден!'));
     main.appendChild(el('p', 'l-text', `${L.title}<br>Твои очки: <b>⭐ ${xp}</b> из ${L.steps.filter((s) => s.type !== 'learn').length * 10}`));
     main.appendChild(el('p', 'l-text small', L.summary || 'Скрипт готов. Скопируй его в Roblox Studio и проверь в Play!'));
-    const btn = el('button', 'btn l-btn', 'Забрать блок 🎁'); btn.onclick = claim;
+    const btn = el('button', 'btn l-btn', onExit ? 'К списку уроков ›' : 'Забрать блок 🎁'); btn.onclick = claim;
     foot.append(el('div', 'l-msg', '<b>🎉 Отличная работа!</b>'), btn);
   }
 
   root.addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('keydown', (e) => {
     if (root.hidden) return;
-    if (e.key === 'Escape') { close(); e.stopPropagation(); }
+    if (e.key === 'Escape') { close(); e.stopImmediatePropagation(); }
     else if (e.key === 'Enter' && mainBtn && !mainBtn.disabled && !e.isComposing) { e.preventDefault(); mainBtn.click(); }
   }, true);
 

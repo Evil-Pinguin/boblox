@@ -99,6 +99,7 @@
     const slide = el('section', `slide ${s.cover ? 'is-cover' : ''} ${dir > 0 ? 'in-right' : 'in-left'}`, s.body);
     area.appendChild(slide);
     if (document.documentElement.classList.contains('m')) window.scrollTo(0, 0);
+    slide.querySelectorAll('[data-lua]').forEach((b) => { b.onclick = () => window.LuaHub && window.LuaHub.open(); });
     slide.querySelectorAll('[data-goto]').forEach((b) => {
       b.onclick = () => { const k = SLIDES.findIndex((x) => x.id === b.dataset.goto); if (k >= 0) go(k); };
     });
@@ -483,7 +484,7 @@
   const doReset = () => {
     state = { done: {}, data: {}, i: 0 }; save();
     $('#confirm').hidden = true; closeBuild(); closeFinal();
-    $('#lesson').hidden = true;
+    $('#lesson').hidden = true; if (window.LuaHub) window.LuaHub.close();
     history.replaceState(null, '', '#1');
     render(0, -1);
   };
@@ -504,6 +505,7 @@
   document.addEventListener('keydown', (e) => {
     if (!$('#confirm').hidden) { if (e.key === 'Escape') $('#confirm').hidden = true; return; }
     if (!$('#lesson').hidden) return;
+    if (window.LuaHub && window.LuaHub.isOpen()) return;
     if (e.target.matches('input, textarea, select')) { if (e.key === 'Escape') e.target.blur(); return; }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     if (!$('#final').hidden) { if (e.key === 'Escape') closeFinal(); return; }
@@ -522,7 +524,7 @@
   let tx = null, ty = null;
   document.addEventListener('touchstart', (e) => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
   document.addEventListener('touchend', (e) => {
-    if (tx == null || e.target.closest('input, textarea, select, .modal')) return;
+    if (tx == null || e.target.closest('input, textarea, select, .modal, .luahub')) return;
     const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
     if (Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) go(state.i + (dx < 0 ? 1 : -1));
     tx = null;

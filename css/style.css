@@ -704,3 +704,46 @@ button.day-card:hover:not(:disabled) { transform: translateY(-3px); filter: brig
 button.day-card:disabled { cursor: default; }
 button.day-card.d2:not(.soon) { animation: glowp 1.8s infinite; }
 @keyframes glowp { 50% { box-shadow: 0 0 0 7px rgba(176,92,255,.25), 0 0 24px rgba(176,92,255,.7); } }
+
+/* ---------- кнопка «Тренажёр Lua» ---------- */
+.lua-btn { height: 36px; padding: 0 14px; border-radius: 10px; border: 2px solid var(--green); background: linear-gradient(180deg, #2fe27a, #1fb85c); color: #052b13; font-size: 14px; font-weight: 900; letter-spacing: .02em; white-space: nowrap; box-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.lua-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.lua-cover-btn { margin-top: 4px; padding: 11px 18px; border-radius: 14px; border: 3px solid var(--green); border-bottom-width: 6px; background: rgba(39,217,107,.14); color: var(--green-t); font-size: 18px; font-weight: 900; }
+.lua-cover-btn:hover { background: rgba(39,217,107,.28); transform: translateY(-2px); }
+
+/* ---------- экран «Тренажёр по Lua» ---------- */
+.luahub { position: absolute; inset: 0; z-index: 42; display: grid; grid-template-rows: 78px 1fr; background: var(--lesson-bg); background-image: radial-gradient(800px 400px at 50% -10%, rgba(39,217,107,.14), transparent 70%); }
+.luahub[hidden] { display: none; }
+.lh-head { display: flex; align-items: center; gap: 20px; padding: 0 28px; border-bottom: 2px solid var(--line); background: rgba(0,0,0,.2); }
+.lh-ttl { display: flex; flex-direction: column; gap: 2px; }
+.lh-ttl b { font-size: 30px; font-weight: 900; line-height: 1.1; }
+.lh-ttl span { font-size: 15px; font-weight: 700; color: var(--muted); }
+.lh-prog { margin-left: auto; width: 330px; display: flex; flex-direction: column; gap: 5px; }
+.lh-prog em { font-style: normal; font-size: 15px; font-weight: 800; color: var(--soft); } .lh-prog em b { color: var(--green-t); font-size: 18px; }
+.lh-bar { height: 12px; border-radius: 7px; background: rgba(0,0,0,.45); overflow: hidden; border: 1px solid var(--line); }
+.lh-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--gold)); transition: width .4s; }
+.lh-body { width: 1120px; max-width: 100%; margin: 0 auto; padding: 8px 28px 8px; display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow-y: auto; }
+.lh-tier { display: flex; align-items: baseline; gap: 12px; margin-top: 2px; }
+.lh-tier b { font-size: 17px; letter-spacing: .1em; color: var(--gold-t); }
+.lh-tier span { font-size: 14px; font-weight: 700; color: var(--muted); }
+.lh-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.lh-card { display: grid; grid-template-columns: 56px 1fr auto; align-items: center; gap: 14px; padding: 10px 14px 10px 12px; border-radius: 16px; background: var(--card); border: 3px solid var(--line); border-bottom-width: 5px; }
+.lh-card.done { border-color: var(--gold); background: linear-gradient(135deg, rgba(255,197,49,.12), var(--card)); }
+.lh-card:not(.done):not(.locked) { border-color: var(--green); box-shadow: 0 0 18px rgba(39,217,107,.18); }
+.lh-card.locked { opacity: .55; }
+.lh-num { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--green); color: #052b13; font-size: 26px; font-weight: 900; font-family: var(--mono); }
+.lh-card.done .lh-num { background: var(--gold); color: #2a1d00; }
+.lh-card.locked .lh-num { background: var(--card2); color: var(--muted); font-size: 22px; }
+.lh-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.lh-t { font-size: 22px; font-weight: 900; line-height: 1.15; display: flex; align-items: center; gap: 8px; }
+.lh-ico { font-size: 24px; }
+.lh-d { font-size: 14px; color: var(--muted); font-weight: 700; font-family: var(--mono); }
+.lh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 14px; font-weight: 800; color: var(--soft); }
+.lh-stars { letter-spacing: 1px; font-size: 13px; }
+.lh-card .lh-bar { height: 8px; margin-top: 2px; }
+.lh-btn { background: var(--green); color: #052b13; white-space: nowrap; font-size: 17px; padding: 12px 16px; }
+.lh-btn:disabled { background: var(--card2); color: var(--muted); }
+.lh-card.done .lh-btn { background: transparent; color: var(--gold-t); border: 2px solid var(--gold); border-bottom-width: 2px; }
+.lh-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 2px 4px; font-size: 14px; font-weight: 700; color: var(--muted); }
+.lh-unlock { background: transparent; border: 2px solid var(--line); border-radius: 10px; padding: 6px 12px; color: var(--soft); font-size: 14px; font-weight: 800; }
+.lh-unlock:hover { border-color: var(--accent); }

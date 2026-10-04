@@ -56,6 +56,7 @@ const ALL_SLIDES = [
             <button type="button" class="day-card d1" data-goto="mission"><b>День 1</b><span>СОЗДАЁМ</span></button>
             <button type="button" class="day-card d2 ${DAYS_ENABLED >= 2 ? '' : 'soon'}" ${DAYS_ENABLED >= 2 ? 'data-goto="day2" title="Перейти сразу в День 2"' : 'disabled'}><b>День 2</b><span>ЗАПУСКАЕМ${DAYS_ENABLED >= 2 ? ' →' : ' · скоро'}</span></button>
           </div>
+          <button type="button" class="lua-cover-btn" data-lua>⌨️ Тренажёр по Lua — с простого к сложному</button>
         </div>
         <div class="cover-right">
         <div class="license" data-done="cover">
